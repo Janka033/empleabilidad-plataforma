@@ -1,0 +1,137 @@
+version: "3.8"
+
+services:
+  # ─────────────────────────────────────────
+  # PostgreSQL — base de datos local
+  # ─────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: empleouni_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - empleouni_network
+
+  # ─────────────────────────────────────────
+  # pgAdmin — GUI opcional para ver la BD
+  # ─────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: empleouni_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@empleouni.co
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - empleouni_network
+    profiles:
+      - tools # solo se levanta con: docker compose --profile tools up
+
+  # ─────────────────────────────────────────
+  # ms-auth — Node.js autenticación (Puerto 3001)
+  # ─────────────────────────────────────────
+  ms-auth:
+    build:
+      context: ./ms-auth
+      dockerfile: Dockerfile
+    container_name: empleouni_ms_auth
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      JWT_SECRET: empleouni_secret_dev_change_in_prod
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: empleouni_auth
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      NODE_ENV: development
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - empleouni_network
+    profiles:
+      - backend
+
+  # ─────────────────────────────────────────
+  # ms-perfiles — Node.js perfiles (Puerto 3002)
+  # ─────────────────────────────────────────
+  ms-perfiles:
+    build:
+      context: ./ms-perfiles
+      dockerfile: Dockerfile
+    container_name: empleouni_ms_perfiles
+    restart: unless-stopped
+    environment:
+      PORT: 3002
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: empleouni_perfiles
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      NODE_ENV: development
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - empleouni_network
+    profiles:
+      - backend
+
+  # ─────────────────────────────────────────
+  # ms-vacantes — Node.js vacantes (Puerto 3003)
+  # ─────────────────────────────────────────
+  ms-vacantes:
+    build:
+      context: ./ms-vacantes
+      dockerfile: Dockerfile
+    container_name: empleouni_ms_vacantes
+    restart: unless-stopped
+    environment:
+      PORT: 3003
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: empleouni_vacantes
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      NODE_ENV: development
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - empleouni_network
+    profiles:
+      - backend
+
+volumes:
+  postgres_data:
+    name: empleouni_postgres_data
+
+networks:
+  empleouni_network:
+    name: empleouni_network
+    driver: bridge

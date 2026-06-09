@@ -1,5 +1,5 @@
 {
-  "name": "ms-perfiles",
+  "name": "ms-vacantes",
   "version": "1.0.0",
   "description": "Microservicio de perfiles — EmpleoUni",
   "main": "src/server.js",

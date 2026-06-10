@@ -2,6 +2,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const UserModel = require("../models/user.model");
 
+const PERFILES_URL = process.env.PERFILES_SERVICE_URL || "http://ms-perfiles:3002";
+
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES = process.env.JWT_EXPIRES_IN || "24h";
 
@@ -64,6 +66,15 @@ const register = asyncHandler(async (req, res) => {
         JWT_SECRET,
         { expiresIn: JWT_EXPIRES }
     );
+
+    // Crear perfil automáticamente en ms-perfiles (best-effort)
+    try {
+        await fetch(`${PERFILES_URL}/perfiles`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ userId: user.id, nombre: user.nombre, email: user.email }),
+        });
+    } catch (_) { /* continúa si ms-perfiles no está disponible */ }
 
     return res.status(201).json({
         token,

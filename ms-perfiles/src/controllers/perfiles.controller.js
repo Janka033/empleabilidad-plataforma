@@ -101,4 +101,29 @@ const update = asyncHandler(async (req, res) => {
     return res.json(updated);
 });
 
-module.exports = { getMe, getById, update };
+// PUT /perfiles/me — actualizar perfil del usuario autenticado
+const updateMe = asyncHandler(async (req, res) => {
+    let perfil = await PerfilModel.findByUserId(req.user.id);
+    if (!perfil) return res.status(404).json({ message: "Perfil no encontrado" });
+
+    const { nombre, bio, universidad, programa, semestre, habilidades } = req.body;
+    const updated = await PerfilModel.update(perfil.id, {
+        nombre, bio, universidad, programa, semestre, habilidades,
+    });
+    return res.json(updated);
+});
+
+// POST /perfiles — crear perfil (llamado desde ms-auth al registrar usuario)
+const create = asyncHandler(async (req, res) => {
+    const { userId, nombre, email } = req.body;
+    const uid = userId || req.user.id;
+
+    // Si ya existe, devolver el existente
+    const existente = await PerfilModel.findByUserId(uid);
+    if (existente) return res.json(existente);
+
+    const perfil = await PerfilModel.create({ userId: uid, nombre: nombre || req.user.email, email: email || req.user.email });
+    return res.status(201).json(perfil);
+});
+
+module.exports = { getMe, getById, update, updateMe, create };

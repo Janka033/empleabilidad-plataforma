@@ -24,6 +24,107 @@ services:
       - empleouni_network
 
   # ─────────────────────────────────────────
+  # ms-auth — Node.js autenticación (Puerto 3001)
+  # ─────────────────────────────────────────
+  ms-auth:
+    build:
+      context: ./ms-auth
+      dockerfile: Dockerfile
+    container_name: empleouni_ms_auth
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      JWT_SECRET: empleouni_secret_dev_change_in_prod
+      PERFILES_SERVICE_URL: http://ms-perfiles:3002
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: empleouni_auth
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      NODE_ENV: development
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - empleouni_network
+
+  # ─────────────────────────────────────────
+  # ms-perfiles — Node.js perfiles (Puerto 3002)
+  # ─────────────────────────────────────────
+  ms-perfiles:
+    build:
+      context: ./ms-perfiles
+      dockerfile: Dockerfile
+    container_name: empleouni_ms_perfiles
+    restart: unless-stopped
+    environment:
+      PORT: 3002
+      JWT_SECRET: empleouni_secret_dev_change_in_prod
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: empleouni_perfiles
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      NODE_ENV: development
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - empleouni_network
+
+  # ─────────────────────────────────────────
+  # ms-vacantes — Node.js vacantes (Puerto 3003)
+  # ─────────────────────────────────────────
+  ms-vacantes:
+    build:
+      context: ./ms-vacantes
+      dockerfile: Dockerfile
+    container_name: empleouni_ms_vacantes
+    restart: unless-stopped
+    environment:
+      PORT: 3003
+      JWT_SECRET: empleouni_secret_dev_change_in_prod
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: empleouni_vacantes
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      NODE_ENV: development
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - empleouni_network
+
+  # ─────────────────────────────────────────
+  # frontend — Next.js (Puerto 3000)
+  # ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: empleouni_frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_AUTH_URL: http://localhost:3001
+      NEXT_PUBLIC_PERFILES_URL: http://localhost:3002
+      NEXT_PUBLIC_VACANTES_URL: http://localhost:3003
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ms-auth
+      - ms-perfiles
+      - ms-vacantes
+    networks:
+      - empleouni_network
+
+  # ─────────────────────────────────────────
   # pgAdmin — GUI opcional para ver la BD
   # ─────────────────────────────────────────
   pgadmin:
@@ -42,90 +143,6 @@ services:
       - empleouni_network
     profiles:
       - tools
-
-  # ─────────────────────────────────────────
-  # ms-auth — Node.js autenticación (Puerto 3001)
-  # ─────────────────────────────────────────
-  ms-auth:
-    build:
-      context: ./ms-auth
-      dockerfile: Dockerfile
-    container_name: empleouni_ms_auth
-    restart: unless-stopped
-    environment:
-      PORT: 3001
-      JWT_SECRET: empleouni_secret_dev_change_in_prod
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: empleouni_auth
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      NODE_ENV: development
-    ports:
-      - "3001:3001"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - empleouni_network
-    profiles:
-      - backend
-
-  # ─────────────────────────────────────────
-  # ms-perfiles — Node.js perfiles (Puerto 3002)
-  # ─────────────────────────────────────────
-  ms-perfiles:
-    build:
-      context: ./ms-perfiles
-      dockerfile: Dockerfile
-    container_name: empleouni_ms_perfiles
-    restart: unless-stopped
-    environment:
-      PORT: 3002
-      JWT_SECRET: empleouni_secret_dev_change_in_prod   # <--- AGREGADO
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: empleouni_perfiles
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      NODE_ENV: development
-    ports:
-      - "3002:3002"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - empleouni_network
-    profiles:
-      - backend
-
-  # ─────────────────────────────────────────
-  # ms-vacantes — Node.js vacantes (Puerto 3003)
-  # ─────────────────────────────────────────
-  ms-vacantes:
-    build:
-      context: ./ms-vacantes
-      dockerfile: Dockerfile
-    container_name: empleouni_ms_vacantes
-    restart: unless-stopped
-    environment:
-      PORT: 3003
-      JWT_SECRET: empleouni_secret_dev_change_in_prod   # <--- AGREGADO
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: empleouni_vacantes
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      NODE_ENV: development
-    ports:
-      - "3003:3003"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - empleouni_network
-    profiles:
-      - backend
 
 volumes:
   postgres_data:

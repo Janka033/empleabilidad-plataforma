@@ -41,7 +41,7 @@ services:
     networks:
       - empleouni_network
     profiles:
-      - tools # solo se levanta con: docker compose --profile tools up
+      - tools
 
   # ─────────────────────────────────────────
   # ms-auth — Node.js autenticación (Puerto 3001)
@@ -82,6 +82,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3002
+      JWT_SECRET: empleouni_secret_dev_change_in_prod   # <--- AGREGADO
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: empleouni_perfiles
@@ -109,6 +110,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3003
+      JWT_SECRET: empleouni_secret_dev_change_in_prod   # <--- AGREGADO
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: empleouni_vacantes

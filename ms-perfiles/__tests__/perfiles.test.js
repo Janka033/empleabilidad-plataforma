@@ -80,3 +80,56 @@ describe("PUT /perfiles/:id", () => {
         expect(res.body.bio).toBe("Nueva bio");
     });
 });
+// ===== PRUEBAS PARA CUBRIR GET /perfiles/:id con "me" y casos borde =====
+
+describe("GET /perfiles/:id", () => {
+    it("devuelve perfil del usuario autenticado cuando id = 'me'", async () => {
+        pool.query.mockResolvedValueOnce({ rows: [PERFIL_MOCK] });
+        const res = await request(app)
+            .get("/perfiles/me")
+            .set("Authorization", `Bearer ${makeToken()}`);
+        expect(res.status).toBe(200);
+        expect(res.body.id).toBe("perfil-1");
+    });
+
+    it("devuelve 404 si no existe el perfil por id específico", async () => {
+        pool.query.mockResolvedValueOnce({ rows: [] });
+        const res = await request(app)
+            .get("/perfiles/id-inexistente")
+            .set("Authorization", `Bearer ${makeToken()}`);
+        expect(res.status).toBe(404);
+    });
+
+    it("devuelve perfil por id específico si existe", async () => {
+        pool.query.mockResolvedValueOnce({ rows: [PERFIL_MOCK] });
+        const res = await request(app)
+            .get("/perfiles/perfil-1")
+            .set("Authorization", `Bearer ${makeToken()}`);
+        expect(res.status).toBe(200);
+        expect(res.body.nombre).toBe("Juan");
+    });
+});
+
+describe("PUT /perfiles/:id - casos borde", () => {
+    it("devuelve 404 si el perfil no existe al actualizar", async () => {
+        pool.query.mockResolvedValueOnce({ rows: [] });
+        const res = await request(app)
+            .put("/perfiles/id-inexistente")
+            .set("Authorization", `Bearer ${makeToken()}`)
+            .send({ bio: "Nueva bio" });
+        expect(res.status).toBe(404);
+    });
+
+    it("permite actualizar usando id = 'me'", async () => {
+        const updated = { ...PERFIL_MOCK, bio: "Bio desde me" };
+        pool.query
+            .mockResolvedValueOnce({ rows: [PERFIL_MOCK] }) // findByUserId
+            .mockResolvedValueOnce({ rows: [updated] });   // update
+        const res = await request(app)
+            .put("/perfiles/me")
+            .set("Authorization", `Bearer ${makeToken()}`)
+            .send({ bio: "Bio desde me" });
+        expect(res.status).toBe(200);
+        expect(res.body.bio).toBe("Bio desde me");
+    });
+});

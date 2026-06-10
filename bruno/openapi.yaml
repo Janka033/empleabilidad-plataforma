@@ -1,0 +1,406 @@
+openapi: 3.0.0
+info:
+  title: openapi
+  version: 1.0.0
+paths:
+  /auth/login:
+    post:
+      summary: Iniciar sesión
+      operationId: >-
+        c_users_janca_onedrive_documentos_bruno_empleouni_api_auth_iniciar_sesi_n_yml
+      description: ''
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+      requestBody:
+        $ref: '#/components/requestBodies/iniciar_sesi_n'
+  /auth/me:
+    get:
+      summary: Obtener usuario autenticado
+      operationId: >-
+        c_users_janca_onedrive_documentos_bruno_empleouni_api_auth_obtener_usuario_autenticado_yml
+      description: ''
+      tags:
+        - Auth
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+      security:
+        - obtener_usuario_autenticado: []
+  /auth/register:
+    post:
+      summary: Registrar nuevo usuario
+      operationId: >-
+        c_users_janca_onedrive_documentos_bruno_empleouni_api_auth_registrar_nuevo_usuario_yml
+      description: ''
+      tags:
+        - Auth
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+        '409':
+          description: Conflict
+      requestBody:
+        $ref: '#/components/requestBodies/registrar_nuevo_usuario'
+  /vacantes/:id:
+    put:
+      summary: Actualizar vacante (solo la empresa dueña)
+      operationId: >-
+        c_users_janca_onedrive_documentos_bruno_empleouni_api_vacantes_actualizar_vacante_solo_la_empresa_due_a_yml
+      description: ''
+      tags:
+        - Vacantes
+      responses:
+        '200':
+          description: OK
+        '403':
+          description: Forbidden
+        '404':
+          description: Not Found
+      parameters:
+        - name: id
+          in: path
+          description: ''
+          required: true
+          schema:
+            type: string
+      security:
+        - actualizar_vacante_solo_la_empresa_due_a: []
+    get:
+      summary: Obtener vacante por ID
+      operationId: >-
+        c_users_janca_onedrive_documentos_bruno_empleouni_api_vacantes_obtener_vacante_por_id_yml
+      description: ''
+      tags:
+        - Vacantes
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Not Found
+      parameters:
+        - name: id
+          in: path
+          description: ''
+          required: true
+          schema:
+            type: string
+      security:
+        - obtener_vacante_por_id: []
+  /vacantes:
+    post:
+      summary: Crear nueva vacante (solo empresas)
+      operationId: >-
+        c_users_janca_onedrive_documentos_bruno_empleouni_api_vacantes_crear_nueva_vacante_solo_empresas_yml
+      description: ''
+      tags:
+        - Vacantes
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+      requestBody:
+        $ref: '#/components/requestBodies/crear_nueva_vacante_solo_empresas'
+      security:
+        - crear_nueva_vacante_solo_empresas: []
+    get:
+      summary: Listar vacantes activas con filtros opcionales
+      operationId: >-
+        c_users_janca_onedrive_documentos_bruno_empleouni_api_vacantes_listar_vacantes_activas_con_filtros_opcionales_yml
+      description: ''
+      tags:
+        - Vacantes
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vacantes:
+                    type: array
+                    items:
+                      type: string
+                  total:
+                    type: integer
+              example:
+                vacantes: []
+                total: 0
+      parameters:
+        - name: modalidad
+          in: query
+          description: ''
+          required: false
+          schema:
+            type: string
+            enum:
+              - Presencial
+              - Remoto
+              - Híbrido
+        - name: tipo
+          in: query
+          description: ''
+          required: false
+          schema:
+            type: string
+            enum:
+              - Práctica
+              - Tiempo completo
+              - Medio tiempo
+        - name: area
+          in: query
+          description: ''
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: ''
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: '50'
+        - name: offset
+          in: query
+          description: ''
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: '0'
+      security:
+        - listar_vacantes_activas_con_filtros_opcionales: []
+  /perfiles/:id:
+    put:
+      summary: Actualizar perfil
+      operationId: >-
+        c_users_janca_onedrive_documentos_bruno_empleouni_api_perfiles_actualizar_perfil_yml
+      description: ''
+      tags:
+        - Perfiles
+      responses:
+        '200':
+          description: OK
+        '403':
+          description: Forbidden
+        '404':
+          description: Not Found
+      parameters:
+        - name: id
+          in: path
+          description: ''
+          required: true
+          schema:
+            type: string
+      requestBody:
+        $ref: '#/components/requestBodies/actualizar_perfil'
+      security:
+        - actualizar_perfil: []
+    get:
+      summary: Obtener perfil por ID
+      operationId: >-
+        c_users_janca_onedrive_documentos_bruno_empleouni_api_perfiles_obtener_perfil_por_id_yml
+      description: ''
+      tags:
+        - Perfiles
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Not Found
+      parameters:
+        - name: id
+          in: path
+          description: ''
+          required: true
+          schema:
+            type: string
+      security:
+        - obtener_perfil_por_id: []
+  /perfiles/me:
+    get:
+      summary: Obtener perfil del usuario autenticado
+      operationId: >-
+        c_users_janca_onedrive_documentos_bruno_empleouni_api_perfiles_obtener_perfil_del_usuario_autenticado_yml
+      description: ''
+      tags:
+        - Perfiles
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Not Found
+      security:
+        - obtener_perfil_del_usuario_autenticado: []
+servers:
+  - url: http://localhost:3001
+    description: Servidor local - Auth Service
+  - url: http://localhost:3002
+    description: Servidor local - Perfiles Service
+  - url: http://localhost:3003
+    description: Servidor local - Vacantes Service
+components:
+  schemas:
+    iniciar_sesi_n:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      example:
+        email: ''
+        password: ''
+    registrar_nuevo_usuario:
+      type: object
+      properties:
+        nombre:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+        rol:
+          type: string
+        universidad:
+          type: string
+        programa:
+          type: string
+        semestre:
+          type: integer
+        razonSocial:
+          type: string
+        nit:
+          type: string
+      example:
+        nombre: ''
+        email: ''
+        password: ''
+        rol: estudiante
+        universidad: ''
+        programa: ''
+        semestre: 0
+        razonSocial: ''
+        nit: ''
+    crear_nueva_vacante_solo_empresas:
+      type: object
+      properties:
+        titulo:
+          type: string
+        empresa:
+          type: string
+        descripcion:
+          type: string
+        requisitos:
+          type: array
+          items:
+            type: string
+        modalidad:
+          type: string
+        tipo:
+          type: string
+        ciudad:
+          type: string
+        area:
+          type: string
+        salario:
+          type: string
+      example:
+        titulo: ''
+        empresa: ''
+        descripcion: ''
+        requisitos: []
+        modalidad: ''
+        tipo: ''
+        ciudad: ''
+        area: ''
+        salario: ''
+    actualizar_perfil:
+      type: object
+      properties:
+        nombre:
+          type: string
+        bio:
+          type: string
+        universidad:
+          type: string
+        programa:
+          type: string
+        semestre:
+          type: integer
+        habilidades:
+          type: array
+          items:
+            type: string
+      example:
+        nombre: ''
+        bio: ''
+        universidad: ''
+        programa: ''
+        semestre: 0
+        habilidades: []
+  requestBodies:
+    iniciar_sesi_n:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/iniciar_sesi_n'
+      description: ''
+      required: true
+    registrar_nuevo_usuario:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/registrar_nuevo_usuario'
+      description: ''
+      required: true
+    crear_nueva_vacante_solo_empresas:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/crear_nueva_vacante_solo_empresas'
+      description: ''
+      required: true
+    actualizar_perfil:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/actualizar_perfil'
+      description: ''
+      required: true
+  securitySchemes:
+    obtener_usuario_autenticado:
+      type: http
+      scheme: bearer
+    actualizar_vacante_solo_la_empresa_due_a:
+      type: http
+      scheme: bearer
+    crear_nueva_vacante_solo_empresas:
+      type: http
+      scheme: bearer
+    listar_vacantes_activas_con_filtros_opcionales:
+      type: http
+      scheme: bearer
+    obtener_vacante_por_id:
+      type: http
+      scheme: bearer
+    actualizar_perfil:
+      type: http
+      scheme: bearer
+    obtener_perfil_del_usuario_autenticado:
+      type: http
+      scheme: bearer
+    obtener_perfil_por_id:
+      type: http
+      scheme: bearer

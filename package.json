@@ -6,9 +6,14 @@
   "scripts": {
     "build": "tsc"
   },
-  "dependencies": {},
+  "dependencies": {
+    "fs": "^0.0.1-security",
+    "swagger-ui-express": "^5.0.1"
+  },
   "devDependencies": {
-    "typescript": "^5.5.3"
+    "swagger-jsdoc": "^6.3.0",
+    "typescript": "^5.5.3",
+    "yamljs": "^0.3.0"
   },
   "private": true
 }

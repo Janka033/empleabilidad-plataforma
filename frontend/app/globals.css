@@ -1,27 +1,56 @@
 @import "tailwindcss";
 
-/* ── Material Symbols (iconos de Stitch) ─────────────────────────── */
-.material-symbols-outlined {
-  font-family: 'Material Symbols Outlined';
-  font-weight: normal;
-  font-style: normal;
-  font-size: 24px;
-  line-height: 1;
-  letter-spacing: normal;
-  text-transform: none;
-  display: inline-block;
-  white-space: nowrap;
-  word-wrap: normal;
-  direction: ltr;
-  -webkit-font-smoothing: antialiased;
+@theme {
+  --color-surface: #fbf9fb;
+  --color-surface-container: #efedef;
+  --color-surface-container-low: #f5f3f5;
+  --color-surface-container-high: #eae7ea;
+  --color-surface-container-highest: #e4e2e4;
+  --color-surface-variant: #e4e2e4;
+  --color-on-surface: #1b1b1d;
+  --color-on-surface-variant: #44474d;
+  --color-background: #fbf9fb;
+  --color-on-background: #1b1b1d;
+  --color-primary: #000000;
+  --color-on-primary: #ffffff;
+  --color-outline: #75777e;
+  --color-outline-variant: #c5c6cd;
+  --color-orange: #f97316;
+  --color-navy: #0d1c32;
+
+  --spacing-xs: 8px;
+  --spacing-sm: 16px;
+  --spacing-md: 24px;
+  --spacing-lg: 40px;
+  --spacing-xl: 64px;
+  --spacing-gutter: 24px;
+  --spacing-margin-mobile: 16px;
+
+  --font-size-body-md: 16px;
+  --font-size-body-sm: 14px;
+  --font-size-body-lg: 18px;
+  --font-size-label-md: 14px;
+  --font-size-label-sm: 12px;
+  --font-size-headline-md: 24px;
+  --font-size-headline-lg: 32px;
+  --font-size-display-lg: 48px;
+
+  --shadow-level-1: 0px 2px 4px rgba(0, 0, 0, 0.05);
+  --shadow-level-2: 0px 10px 20px rgba(0, 0, 0, 0.08);
 }
 
-/* ── Scrollbar sutil ─────────────────────────────────────────────── */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #c5c6cd transparent;
+:root {
+  --font-inter: "Inter", sans-serif;
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #c5c6cd; border-radius: 9999px; }
+body {
+  color: #1b1b1d;
+  background: #fbf9fb;
+  font-family: var(--font-inter);
+}
+
+.bg-navy { background-color: #0d1c32; }
+.bg-orange { background-color: #f97316; }
+.text-orange { color: #f97316; }
+.shadow-level-1 { box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.05); }
+.shadow-level-2 { box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.08); }

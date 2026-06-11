@@ -109,6 +109,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_AUTH_URL: http://localhost:3001
+        NEXT_PUBLIC_PERFILES_URL: http://localhost:3002
+        NEXT_PUBLIC_VACANTES_URL: http://localhost:3003
     container_name: empleouni_frontend
     restart: unless-stopped
     environment:
@@ -123,7 +127,6 @@ services:
       - ms-vacantes
     networks:
       - empleouni_network
-
   # ─────────────────────────────────────────
   # pgAdmin — GUI opcional para ver la BD
   # ─────────────────────────────────────────

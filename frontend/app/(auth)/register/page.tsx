@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { API_URLS } from "../../lib/api";
 
 type UserRole = "estudiante" | "empresa";
 
@@ -95,7 +96,7 @@ export default function RegisterPage() {
                     ? { universidad: formData.universidad, programa: formData.programa, semestre: Number(formData.semestre) }
                     : { razonSocial: formData.razonSocial, nit: formData.nit }),
             };
-            const res = await fetch(`${process.env.NEXT_PUBLIC_AUTH_URL}/auth/register`, {
+            const res = await fetch(`${API_URLS.auth}/auth/register`, {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });

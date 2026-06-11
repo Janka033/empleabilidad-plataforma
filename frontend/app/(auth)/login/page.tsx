@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { API_URLS } from "../../lib/api";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -20,21 +21,28 @@ export default function LoginPage() {
         setLoading(true);
         setError("");
         try {
-            const res = await fetch(
-                `${process.env.NEXT_PUBLIC_AUTH_URL}/auth/login`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(formData),
-                }
-            );
+            const res = await fetch(`${API_URLS.auth}/auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(formData),
+            });
             const data = await res.json();
             if (!res.ok) {
                 setError(data.message || "Credenciales inválidas");
                 return;
             }
+
+            // Guardar token, rol y datos del usuario para uso en toda la app
             localStorage.setItem("token", data.token);
-            router.push("/vacantes");
+            localStorage.setItem("role", data.role);
+            localStorage.setItem("user", JSON.stringify(data.user));
+
+            // Redirigir según rol
+            if (data.role === "empresa") {
+                router.push("/vacantes"); // empresa ve sus vacantes y puede crear
+            } else {
+                router.push("/vacantes"); // estudiante ve vacantes disponibles
+            }
         } catch {
             setError("Error de conexión. Intenta de nuevo.");
         } finally {
@@ -53,9 +61,9 @@ export default function LoginPage() {
                 <div style={{ position: "absolute", top: "50%", right: "32px", width: "128px", height: "128px", backgroundColor: "rgba(249,115,22,0.1)", borderRadius: "9999px", transform: "translateY(-50%)" }} />
 
                 <div style={{ position: "relative", zIndex: 10 }}>
-          <span style={{ color: "white", fontSize: "24px", fontWeight: "700", letterSpacing: "-0.025em" }}>
-            Empleo<span style={{ color: "#f97316" }}>Uni</span>
-          </span>
+                    <span style={{ color: "white", fontSize: "24px", fontWeight: "700", letterSpacing: "-0.025em" }}>
+                        Empleo<span style={{ color: "#f97316" }}>Uni</span>
+                    </span>
                     <p style={{ color: "#b9c7e4", fontSize: "14px", marginTop: "4px" }}>
                         Plataforma de empleabilidad universitaria
                     </p>
@@ -87,9 +95,9 @@ export default function LoginPage() {
             {/* Panel derecho — formulario */}
             <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", backgroundColor: "#fbf9fb", padding: "48px 24px" }}>
                 <div className="lg:hidden" style={{ marginBottom: "32px", textAlign: "center" }}>
-          <span style={{ color: "#0d1c32", fontSize: "24px", fontWeight: "700" }}>
-            Empleo<span style={{ color: "#f97316" }}>Uni</span>
-          </span>
+                    <span style={{ color: "#0d1c32", fontSize: "24px", fontWeight: "700" }}>
+                        Empleo<span style={{ color: "#f97316" }}>Uni</span>
+                    </span>
                 </div>
 
                 <div style={{ width: "100%", maxWidth: "448px" }}>

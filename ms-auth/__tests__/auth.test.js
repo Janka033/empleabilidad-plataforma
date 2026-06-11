@@ -4,6 +4,7 @@ describe("Auth Middleware (verifyToken)", () => {
     beforeEach(() => {
         jest.resetModules();
         jest.clearAllMocks();
+        process.env.JWT_SECRET = "test_secret_at_least_32_chars_long!!";
         // Re-importar el middleware después de resetear módulos
         verifyToken = require("../src/middlewares/auth.middleware").verifyToken;
     });

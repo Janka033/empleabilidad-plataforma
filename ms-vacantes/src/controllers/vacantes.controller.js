@@ -116,9 +116,19 @@ const create = asyncHandler(async (req, res) => {
         return res.status(400).json({ message: "Tipo inválido" });
     }
 
+    // Extraer solo campos permitidos para evitar mass assignment
+    const { requisitos, salario } = req.body;
     const vacante = await VacanteModel.create({
         empresa_id: req.user.id,
-        ...req.body,
+        titulo,
+        empresa,
+        descripcion,
+        requisitos,
+        modalidad,
+        tipo,
+        ciudad,
+        area,
+        salario,
     });
 
     return res.status(201).json(vacante);
@@ -149,7 +159,19 @@ const update = asyncHandler(async (req, res) => {
         return res.status(403).json({ message: "No autorizado para editar esta vacante" });
     }
 
-    const updated = await VacanteModel.update(req.params.id, req.body);
+    // Whitelist de campos editables — empresa_id NO puede ser modificado
+    const { titulo, empresa, descripcion, requisitos, modalidad, tipo, ciudad, area, salario } = req.body;
+    const updated = await VacanteModel.update(req.params.id, {
+        titulo,
+        empresa,
+        descripcion,
+        requisitos,
+        modalidad,
+        tipo,
+        ciudad,
+        area,
+        salario,
+    });
     return res.json(updated);
 });
 

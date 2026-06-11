@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { API_URLS, authHeaders, parseApiError } from "../../lib/api";
 
 // Define the shape of the Vacante object
 interface Vacante {
@@ -10,16 +11,11 @@ interface Vacante {
     titulo: string;
     empresa: string;
     modalidad: string;
-    ubicacion: string;
+    ciudad: string;
     salario: string;
     descripcion: string;
     requisitos: string[];
     logoUrl?: string;
-}
-
-// Tipo para el error
-interface ApiError {
-    message?: string;
 }
 
 export default function PostularPage() {
@@ -36,9 +32,6 @@ export default function PostularPage() {
     const [error, setError] = useState<string | null>(null);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [shouldRedirect, setShouldRedirect] = useState(false);
-
-    // Constants
-    const PERFILES_URL = process.env.NEXT_PUBLIC_PERFILES_URL || "http://localhost:3002";
 
     // Efecto para cargar la vacante (corregido - sin setState síncrono conflictivo)
     useEffect(() => {
@@ -102,11 +95,11 @@ export default function PostularPage() {
         }
 
         try {
-            const response = await fetch(`${PERFILES_URL}/postulaciones`, {
+            const response = await fetch(`${API_URLS.perfiles}/postulaciones`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
+                    ...authHeaders(token),
                 },
                 body: JSON.stringify({
                     vacanteId: vacante.id,
@@ -117,8 +110,7 @@ export default function PostularPage() {
             });
 
             if (!response.ok) {
-                const errorData = await response.json() as ApiError;
-                throw new Error(errorData.message || `Error: ${response.status} ${response.statusText}`);
+                throw new Error(await parseApiError(response, `Error: ${response.status} ${response.statusText}`));
             }
 
             // Clear form fields and show success modal
@@ -245,7 +237,7 @@ export default function PostularPage() {
                 </span>
                                 <span className="px-2 py-1 rounded bg-surface-variant text-on-surface font-label-sm text-label-sm flex items-center gap-1">
                   <span className="material-symbols-outlined text-[14px]">location_on</span>{" "}
-                                    {vacante?.ubicacion}
+                                    {vacante?.ciudad}
                 </span>
                                 <span className="px-2 py-1 rounded bg-[#e8f5e9] text-[#1b5e20] font-label-sm text-label-sm flex items-center gap-1">
                   <span className="material-symbols-outlined text-[14px]">payments</span>{" "}
@@ -429,7 +421,7 @@ export default function PostularPage() {
                 {/* Success Modal */}
                 {showSuccessModal && (
                     <div className="fixed inset-0 z-[100] bg-inverse-surface/80 backdrop-blur-sm flex items-center justify-center p-margin-mobile">
-                        <div className="bg-surface-container-lowest rounded-xl shadow-xl p-xl w-full max-w-md flex flex-col items-center text-center gap-md transform scale-100 transition-transform">
+                        <div className="bg-surface-container-lowest rounded-xl shadow-xl p-xl w-full max-w-lg flex flex-col items-center text-center gap-lg">
                             <div className="w-16 h-16 rounded-full bg-[#e8f5e9] flex items-center justify-center mb-2">
                 <span className="material-symbols-outlined text-[32px] text-[#1b5e20]">
                   check_circle

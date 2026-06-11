@@ -1,15 +1,26 @@
-const { Router } = require("express");
-const { getMe, getById, update, updateMe, create } = require("../controllers/perfiles.controller");
-const { verifyToken } = require("../middlewares/auth.middleware");
+const express = require("express");
+const cors = require("cors");
+const { specs, swaggerUi } = require("./swagger");
+const perfilesRoutes = require("./routes/perfiles.routes");
+const postulacionesRoutes = require("./routes/postulaciones.routes");
 
-const router = Router();
+const app = express();
 
-router.use(verifyToken);
+app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
+app.use(express.json());
 
-router.post("/", create);          // POST /perfiles — crear perfil
-router.get("/me", getMe);          // GET  /perfiles/me
-router.put("/me", updateMe);       // PUT  /perfiles/me
-router.get("/:id", getById);       // GET  /perfiles/:id
-router.put("/:id", update);        // PUT  /perfiles/:id
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
 
-module.exports = router;
+app.use("/perfiles", perfilesRoutes);
+app.use("/postulaciones", postulacionesRoutes);
+
+app.get("/health", (_req, res) => res.json({ status: "ok", service: "ms-perfiles" }));
+
+app.use((_req, res) => res.status(404).json({ message: "Ruta no encontrada" }));
+
+app.use((err, _req, res, _next) => {
+    console.error("[ms-perfiles] Error:", err.message);
+    res.status(500).json({ message: "Error interno del servidor" });
+});
+
+module.exports = app;

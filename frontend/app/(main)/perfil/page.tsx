@@ -1,52 +1,56 @@
-// frontend/app/(main)/perfil/page.tsx
 "use client";
 
-import React, { useState, useEffect, FormEvent } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { API_URLS, authHeaders, parseApiError } from "../../lib/api";
 
-// Interface for User Profile Data
-interface UserProfile {
-  id: string;
-  nombre: string;
-  apellido: string;
-  email: string;
-  universidad: string;
-  programa: string;
-  semestre: string;
-  bio: string;
-  habilidades: string[];
-  // Add other profile fields as needed
-}
-
-// Interface for Postulation Data
 interface Postulacion {
   id: string;
-  vacante: string;
-  empresa: string;
-  fecha: string; // Date string
-  estado: "enviada" | "vista" | "entrevista" | "aceptada" | "rechazada" | string;
-  // Add other postulation fields as needed
+  vacanteId: string;
+  cartaMotivacion: string;
+  expectativaSalarial: string;
+  disponibilidad: string;
+  estado: string;
+  fecha: string;
+}
+
+interface Perfil {
+  id: string;
+  user_id: string;
+  nombre: string;
+  email: string;
+  bio?: string;
+  universidad?: string;
+  programa?: string;
+  semestre?: number;
+  habilidades?: string[];
+  completitud: number;
+  updated_at?: string;
 }
 
 export default function PerfilPage() {
   const router = useRouter();
 
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [postulaciones, setPostulaciones] = useState<Postulacion[]>([]);
+  const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // States for editable fields
-  const [editUniversidad, setEditUniversidad] = useState("");
-  const [editPrograma, setEditPrograma] = useState("");
-  const [editSemestre, setEditSemestre] = useState("");
-  const [editBio, setEditBio] = useState("");
-  const [editHabilidades, setEditHabilidades] = useState<string[]>([]);
-  const [newHabilidad, setNewHabilidad] = useState("");
+  // Campos del formulario
+  const [nombre, setNombre] = useState("");
+  const [bio, setBio] = useState("");
+  const [universidad, setUniversidad] = useState("");
+  const [programa, setPrograma] = useState("");
+  const [semestre, setSemestre] = useState<string>("");
+  const [habilidades, setHabilidades] = useState<string[]>([]);
+  const [habilidadInput, setHabilidadInput] = useState("");
 
-  const PERFILES_URL = process.env.NEXT_PUBLIC_PERFILES_URL || "http://localhost:3002";
+  // Postulaciones del estudiante
+  const [postulaciones, setPostulaciones] = useState<Postulacion[]>([]);
+  const [postulacionesLoading, setPostulacionesLoading] = useState(false);
 
+  // ── CARGA DEL PERFIL ─────────────────────────────────────────────────────
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -54,503 +58,495 @@ export default function PerfilPage() {
       return;
     }
 
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
+    const loadPerfil = async () => {
       try {
-        const token = localStorage.getItem("token");
-        if (!token) { router.push("/login"); return; }
-
-        const profileResponse = await fetch(`${PERFILES_URL}/perfiles/me`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const res = await fetch(`${API_URLS.perfiles}/perfiles/me`, {
+          headers: authHeaders(token),
         });
 
-        // Si no existe perfil, crearlo automáticamente
-        if (profileResponse.status === 404) {
-          const createResponse = await fetch(`${PERFILES_URL}/perfiles`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({}),
-          });
-          if (!createResponse.ok) {
-            throw new Error("No se pudo crear el perfil.");
-          }
-          const newProfile: UserProfile = await createResponse.json();
-          setProfile(newProfile);
-          setEditUniversidad(newProfile.universidad || "");
-          setEditPrograma(newProfile.programa || "");
-          setEditSemestre(newProfile.semestre || "");
-          setEditBio(newProfile.bio || "");
-          setEditHabilidades(newProfile.habilidades || []);
-        } else if (!profileResponse.ok) {
-          throw new Error("Error al cargar el perfil.");
-        } else {
-          const profileData: UserProfile = await profileResponse.json();
-          setProfile(profileData);
-          setEditUniversidad(profileData.universidad || "");
-          setEditPrograma(profileData.programa || "");
-          setEditSemestre(profileData.semestre || "");
-          setEditBio(profileData.bio || "");
-          setEditHabilidades(profileData.habilidades || []);
+        if (res.status === 401) {
+          localStorage.removeItem("token");
+          router.push("/login");
+          return;
         }
 
-        // Postulaciones — si falla no rompe la página
-        try {
-          const postResponse = await fetch(`${PERFILES_URL}/postulaciones/me`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (postResponse.ok) {
-            const postData: Postulacion[] = await postResponse.json();
-            setPostulaciones(postData);
-          }
-        } catch { /* postulaciones vacías por ahora */ }
+        if (res.status === 404) {
+          // Perfil todavía no creado (puede ocurrir si ms-perfiles estuvo caído al registrarse)
+          setError("Tu perfil aún no ha sido creado. Cierra sesión, vuelve a registrarte o contacta soporte.");
+          setLoading(false);
+          return;
+        }
 
+        if (!res.ok) {
+          throw new Error(await parseApiError(res, "Error al cargar el perfil"));
+        }
+
+        const data: Perfil = await res.json();
+        setPerfil(data);
+
+        // Poblar el formulario con los datos actuales
+        setNombre(data.nombre ?? "");
+        setBio(data.bio ?? "");
+        setUniversidad(data.universidad ?? "");
+        setPrograma(data.programa ?? "");
+        setSemestre(data.semestre?.toString() ?? "");
+        setHabilidades(data.habilidades ?? []);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Error inesperado");
+        setError(err instanceof Error ? err.message : "Error de conexión con el servidor");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, [router, PERFILES_URL]);
+    loadPerfil();
+  }, [router]);
 
-  const handleEditClick = () => {
-    setIsEditing(true);
-  };
-
-  const handleSaveProfile = async (event: FormEvent) => {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-
+  // ── CARGA DE POSTULACIONES ────────────────────────────────────────────────
+  const loadPostulaciones = useCallback(async () => {
     const token = localStorage.getItem("token");
-    if (!token) {
-      setError("No autorizado. Por favor, inicia sesión de nuevo.");
-      setLoading(false);
-      router.push("/login");
-      return;
+    if (!token) return;
+    setPostulacionesLoading(true);
+    try {
+      const res = await fetch(`${API_URLS.perfiles}/postulaciones/me`, {
+        headers: authHeaders(token),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPostulaciones(data);
+      }
+    } catch { /* silenciar */ } finally {
+      setPostulacionesLoading(false);
     }
+  }, []);
+
+  useEffect(() => { loadPostulaciones(); }, [loadPostulaciones]);
+  const handleSave = async () => {
+    if (!perfil) return;
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    setSaving(true);
+    setError(null);
+    setSuccessMsg(null);
 
     try {
-      const response = await fetch(`${PERFILES_URL}/perfiles/me`, {
+      const res = await fetch(`${API_URLS.perfiles}/perfiles/${perfil.id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: authHeaders(token),
         body: JSON.stringify({
-          universidad: editUniversidad,
-          programa: editPrograma,
-          semestre: editSemestre,
-          bio: editBio,
-          habilidades: editHabilidades,
+          nombre:      nombre || undefined,
+          bio:         bio || undefined,
+          universidad: universidad || undefined,
+          programa:    programa || undefined,
+          semestre:    semestre ? parseInt(semestre) : undefined,
+          habilidades: habilidades.length > 0 ? habilidades : undefined,
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Error al actualizar el perfil.");
+      if (!res.ok) {
+        throw new Error(await parseApiError(res, "No se pudieron guardar los cambios"));
       }
 
-      const updatedProfile: UserProfile = await response.json();
-      setProfile(updatedProfile); // Update local state with the saved profile
-      setIsEditing(false); // Exit edit mode
-    }  catch (err: unknown) {
-    setError(err instanceof Error ? err.message : "Ocurrió un error inesperado al guardar el perfil.");
+      const updated: Perfil = await res.json();
+      setPerfil(updated);
+      setSuccessMsg("Perfil actualizado correctamente");
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al guardar");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const handleAddHabilidad = () => {
-    if (newHabilidad.trim() !== "" && !editHabilidades.includes(newHabilidad.trim())) {
-      setEditHabilidades([...editHabilidades, newHabilidad.trim()]);
-      setNewHabilidad("");
+  // ── HABILIDADES ──────────────────────────────────────────────────────────
+  const addHabilidad = (value: string) => {
+    const trimmed = value.replace(/,/g, "").trim();
+    if (trimmed && !habilidades.includes(trimmed)) {
+      setHabilidades([...habilidades, trimmed]);
     }
+    setHabilidadInput("");
   };
 
-  const handleRemoveHabilidad = (habilidadToRemove: string) => {
-    setEditHabilidades(editHabilidades.filter(h => h !== habilidadToRemove));
+  const removeHabilidad = (h: string) => {
+    setHabilidades(habilidades.filter((x) => x !== h));
   };
 
-  const getPostulationStatusClasses = (estado: Postulacion["estado"]) => {
-    switch (estado) {
-      case "enviada":
-        return "bg-primary-fixed text-on-primary-fixed-variant"; // Blueish
-      case "vista":
-        return "bg-tertiary-fixed text-on-tertiary-fixed-variant"; // Orange/Brownish
-      case "entrevista":
-        return "bg-surface-tint text-on-primary"; // Darker Blue/Purple
-      case "aceptada":
-        return "bg-[#e8f5e9] text-[#1b5e20]"; // Green
-      case "rechazada":
-        return "bg-error-container text-on-error-container"; // Red
-      default:
-        return "bg-secondary-container text-on-secondary-container"; // Default neutral
-    }
+  // ── COLOR DE COMPLETITUD ─────────────────────────────────────────────────
+  const getCompletitudColor = (pct: number) => {
+    if (pct >= 80) return "bg-[#16a34a]"; // verde
+    if (pct >= 50) return "bg-primary";    // azul
+    return "bg-orange";                    // naranja
   };
 
-  if (loading && !profile) {
+  // ── PANTALLA DE CARGA ────────────────────────────────────────────────────
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background text-on-background">
-        <p className="text-primary">Cargando datos del perfil...</p>
-      </div>
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-on-surface-variant font-body-md text-body-md">Cargando perfil...</p>
+          </div>
+        </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background text-on-background">
-        <p className="text-error p-4 bg-error-container rounded-md">{error}</p>
-        <button onClick={() => router.push("/login")} className="ml-4 px-4 py-2 bg-primary text-on-primary rounded">
-          Volver a Iniciar Sesión
-        </button>
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background text-on-background">
-        <p className="text-error">No se pudo cargar la información del perfil.</p>
-      </div>
-    );
-  }
-
-  // Calculate profile completion percentage (mock data for now)
-  const profileCompletion = 85; // Placeholder value
-
+  // ── RENDER PRINCIPAL ─────────────────────────────────────────────────────
   return (
-    <>
-      <div className="bg-background text-on-background antialiased font-body-md text-body-md">
-        {/* TopNavBar */}
-        <header className="bg-surface border-b border-outline-variant shadow-sm fixed top-0 w-full z-50">
-          <div className="flex justify-between items-center px-margin-mobile md:px-xl h-16 max-w-container-max mx-auto">
-            {/* Brand */}
-            <div className="font-headline-md text-headline-md font-bold text-primary">
-              EmpleoUni
-            </div>
-            {/* Navigation */}
-            <nav className="hidden md:flex gap-lg h-full items-center">
-              <a
-                className="text-on-surface-variant font-body-md text-body-md hover:text-primary transition-colors flex items-center h-full pt-1"
-                href="/vacantes"
-              >
-                Vacantes
-              </a>
-              <a
-                className="text-primary font-body-md text-body-md border-b-2 border-primary pb-1 flex items-center h-full pt-[6px]"
-                href="/perfil"
-              >
-                Mi Perfil
-              </a>
-            </nav>
-            {/* Actions */}
-            <div className="flex items-center gap-md">
-              <button
-                onClick={() => {
-                  localStorage.removeItem("token");
-                  router.push("/login");
-                }}
-                className="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors scale-95 active:scale-90"
-              >
-                Cerrar sesión
-              </button>
+      <div className="bg-background text-on-background font-body-md min-h-screen flex flex-col pt-16">
+
+        {/* NavBar */}
+        <nav className="bg-surface border-b border-outline-variant shadow-sm fixed top-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-xl h-16 max-w-container-max mx-auto left-0 right-0">
+          <div className="flex items-center gap-xl">
+            <span className="font-headline-md text-headline-md font-bold text-primary tracking-tight">EmpleoUni</span>
+            <div className="hidden md:flex gap-md font-body-md text-body-md">
+              <a className="text-on-surface-variant hover:text-primary transition-colors" href="/vacantes">Vacantes</a>
+              <a className="text-primary border-b-2 border-primary pb-1" href="/perfil">Mi Perfil</a>
             </div>
           </div>
-        </header>
+          <button
+              onClick={() => { localStorage.removeItem("token"); router.push("/login"); }}
+              className="font-label-md text-label-md text-on-primary bg-primary rounded px-md py-xs hover:bg-on-surface-variant transition-colors shadow-level-1"
+          >
+            Cerrar sesión
+          </button>
+        </nav>
 
-        {/* Main Content Canvas */}
-        <main className="pt-24 pb-xl px-margin-mobile md:px-xl max-w-container-max mx-auto min-h-screen">
-          {/* Profile Header */}
-          <section className="bg-primary-container rounded-xl p-md md:p-lg flex flex-col md:flex-row items-center md:items-start gap-md shadow-lg relative overflow-hidden">
-            {/* Decorative background element */}
-            <div className="absolute -right-20 -top-20 w-64 h-64 bg-surface-tint opacity-20 rounded-full blur-3xl pointer-events-none"></div>
-            {/* Avatar */}
-            <div className="w-24 h-24 shrink-0 rounded-full bg-inverse-primary flex items-center justify-center font-headline-lg text-headline-lg text-primary-container shadow-sm border-2 border-surface">
-              {profile.nombre ? profile.nombre.charAt(0).toUpperCase() : ""}{profile.apellido ? profile.apellido.charAt(0).toUpperCase() : ""}
-            </div>
-            {/* Info */}
-            <div className="flex-1 text-center md:text-left flex flex-col justify-center h-full z-10">
-              {isEditing ? (
-                <>
-                  <input
-                    type="text"
-                    value={`${profile.nombre} ${profile.apellido}`}
-                    readOnly
-                    className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-primary mb-xs bg-transparent border-none focus:ring-0"
-                  />
-                  <div className="flex flex-col md:flex-row items-center md:items-center gap-xs md:gap-md text-inverse-primary font-body-sm text-body-sm">
-                    <div className="flex items-center gap-base">
-                      <span className="material-symbols-outlined text-[16px]">school</span>
-                      <input
-                        type="text"
-                        value={editUniversidad}
-                        onChange={(e) => setEditUniversidad(e.target.value)}
-                        className="bg-transparent border-b border-inverse-primary focus:outline-none focus:border-white text-inverse-primary"
-                      />
-                    </div>
-                    <div className="hidden md:block w-1 h-1 rounded-full bg-inverse-primary/50"></div>
-                    <div className="flex items-center gap-base">
-                      <span className="material-symbols-outlined text-[16px]">book</span>
-                      <input
-                        type="text"
-                        value={editPrograma}
-                        onChange={(e) => setEditPrograma(e.target.value)}
-                        className="bg-transparent border-b border-inverse-primary focus:outline-none focus:border-white text-inverse-primary"
-                      />
-                    </div>
-                    <div className="hidden md:block w-1 h-1 rounded-full bg-inverse-primary/50"></div>
-                    <div className="flex items-center gap-base">
-                      <span className="material-symbols-outlined text-[16px]">schedule</span>
-                      <input
-                        type="text"
-                        value={editSemestre}
-                        onChange={(e) => setEditSemestre(e.target.value)}
-                        className="bg-transparent border-b border-inverse-primary focus:outline-none focus:border-white text-inverse-primary"
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h1 className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-primary mb-xs">
-                    {profile.nombre} {profile.apellido}
-                  </h1>
-                  <div className="flex flex-col md:flex-row items-center md:items-center gap-xs md:gap-md text-inverse-primary font-body-sm text-body-sm">
-                    <div className="flex items-center gap-base">
-                      <span className="material-symbols-outlined text-[16px]">school</span>
-                      {profile.universidad}
-                    </div>
-                    <div className="hidden md:block w-1 h-1 rounded-full bg-inverse-primary/50"></div>
-                    <div className="flex items-center gap-base">
-                      <span className="material-symbols-outlined text-[16px]">book</span>
-                      {profile.programa}
-                    </div>
-                    <div className="hidden md:block w-1 h-1 rounded-full bg-inverse-primary/50"></div>
-                    <div className="flex items-center gap-base">
-                      <span className="material-symbols-outlined text-[16px]">schedule</span>
-                      {profile.semestre}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-            {/* CTA */}
-            <div className="mt-sm md:mt-0 z-10">
-              {isEditing ? (
-                <button
-                  onClick={handleSaveProfile}
-                  className="flex items-center gap-base border border-inverse-primary bg-inverse-primary text-primary-container px-sm py-xs rounded transition-all font-label-md text-label-md hover:opacity-90"
-                  disabled={loading}
-                >
-                  {loading ? "Guardando..." : "Guardar"}
-                </button>
-              ) : (
-                <button
-                  onClick={handleEditClick}
-                  className="flex items-center gap-base border border-inverse-primary text-inverse-primary hover:bg-inverse-primary hover:text-primary-container px-sm py-xs rounded transition-all font-label-md text-label-md"
-                >
-                  <span className="material-symbols-outlined text-[18px]">edit</span>
-                  Editar perfil
-                </button>
-              )}
-            </div>
-          </section>
+        <main className="flex-1 w-full max-w-container-max mx-auto px-margin-mobile md:px-xl py-lg">
 
-          {/* Stats Row */}
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-md mt-md">
-            {/* Stat 1 */}
-            <div className="bg-surface-container-lowest rounded-lg p-md border border-outline-variant shadow-sm flex flex-col justify-between">
-              <div className="flex items-center gap-xs text-on-surface-variant font-label-md text-label-md mb-xs">
-                <span className="material-symbols-outlined text-[20px]">send</span>
-                Postulaciones
-              </div>
-              <div className="font-headline-lg text-headline-lg text-on-surface">{postulaciones.length}</div>
-            </div>
-            {/* Stat 2 */}
-            <div className="bg-surface-container-lowest rounded-lg p-md border border-outline-variant shadow-sm flex flex-col justify-between">
-              <div className="flex items-center gap-xs text-on-surface-variant font-label-md text-label-md mb-xs">
-                <span className="material-symbols-outlined text-[20px]">visibility</span>
-                Vacantes vistas
-              </div>
-              <div className="font-headline-lg text-headline-lg text-on-surface">45</div> {/* Placeholder */}
-            </div>
-            {/* Stat 3: Progress */}
-            <div className="bg-surface-container-lowest rounded-lg p-md border border-outline-variant shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between text-on-surface-variant font-label-md text-label-md mb-sm">
-                <div className="flex items-center gap-xs">
-                  <span className="material-symbols-outlined text-[20px]">person</span>
-                  Perfil completo
+          {/* Encabezado con completitud */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-lg gap-sm">
+            <h1 className="font-headline-lg text-headline-lg font-bold text-on-surface">Mi Perfil</h1>
+
+            {perfil && (
+                <div className="flex items-center gap-sm bg-surface border border-outline-variant rounded-lg px-md py-sm shadow-level-1">
+                  <span className="font-body-sm text-body-sm text-on-surface-variant">Completitud</span>
+                  <div className="w-32 h-2 bg-surface-container-highest rounded-full overflow-hidden">
+                    <div
+                        className={`h-full rounded-full transition-all duration-500 ${getCompletitudColor(perfil.completitud)}`}
+                        style={{ width: `${perfil.completitud}%` }}
+                    />
+                  </div>
+                  <span className="font-label-md text-label-md font-semibold text-primary">
+                                {perfil.completitud}%
+                            </span>
                 </div>
-                <span className="text-primary-container font-bold">{profileCompletion}%</span>
-              </div>
-              <div className="w-full bg-surface-variant h-2 rounded-full overflow-hidden mt-auto">
-                <div
-                  className="bg-primary-container h-full rounded-full transition-all duration-1000 ease-out"
-                  style={{ width: `${profileCompletion}%` }}
-                ></div>
-              </div>
-            </div>
-          </section>
+            )}
+          </div>
 
-          {/* Main Layout: 2 Columns */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-lg mt-lg">
-            {/* Left Column: Bio & Skills & Experience */}
-            <div className="md:col-span-1 flex flex-col gap-lg">
-              {/* Bio Section */}
-              <section className="bg-surface-container-lowest rounded-lg p-md border border-outline-variant shadow-sm">
-                <h2 className="font-headline-md text-headline-md text-on-surface mb-md">Acerca de mí</h2>
-                {isEditing ? (
-                  <textarea
-                    value={editBio}
-                    onChange={(e) => setEditBio(e.target.value)}
-                    className="w-full h-32 p-2 border border-outline-variant rounded-md bg-surface-container-low text-on-surface focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container"
-                  />
-                ) : (
-                  <p className="font-body-md text-body-md text-on-surface-variant whitespace-pre-wrap">
-                    {profile.bio || "No hay biografía disponible. ¡Edita tu perfil para agregar una!"}
-                  </p>
+          {/* Mensajes de estado */}
+          {error && !perfil && (
+              <div className="mb-lg p-md bg-error-container text-on-error-container rounded-lg font-body-sm text-body-sm">
+                {error}
+              </div>
+          )}
+
+          {perfil ? (
+              <div className="flex flex-col gap-lg">
+                {/* Feedback de guardado */}
+                {error && (
+                    <div className="p-sm bg-error-container text-on-error-container rounded-lg font-body-sm text-body-sm flex items-center gap-xs">
+                      <span className="material-symbols-outlined text-[16px]">error</span>
+                      {error}
+                    </div>
                 )}
-              </section>
+                {successMsg && (
+                    <div className="p-sm bg-[#dcfce7] text-[#166534] rounded-lg font-body-sm text-body-sm flex items-center gap-xs">
+                      <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                      {successMsg}
+                    </div>
+                )}
 
-              {/* Skills Section */}
-              <section className="bg-surface-container-lowest rounded-lg p-md border border-outline-variant shadow-sm">
-                <h2 className="font-headline-md text-headline-md text-on-surface mb-md">Habilidades</h2>
-                <div className="flex flex-wrap gap-xs">
-                  {isEditing ? (
-                    <>
-                      {editHabilidades.map((habilidad, index) => (
-                        <span key={index} className="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full font-label-sm text-label-sm flex items-center gap-1">
-                          {habilidad}
-                          <button onClick={() => handleRemoveHabilidad(habilidad)} className="ml-1 text-on-secondary-container/70 hover:text-on-secondary-container">
-                            <span className="material-symbols-outlined text-[14px]">close</span>
-                          </button>
-                        </span>
-                      ))}
-                      <div className="flex items-center gap-xs">
-                        <input
+                {/* Tarjeta principal del formulario */}
+                <div className="bg-surface border border-outline-variant rounded-xl shadow-level-1 p-lg flex flex-col gap-lg">
+
+                  {/* Correo (solo lectura) */}
+                  <div>
+                    <label className="font-label-md text-label-md text-on-surface-variant block mb-xs">
+                      Correo electrónico
+                    </label>
+                    <div className="bg-surface-container rounded px-sm py-xs font-body-md text-body-md text-on-surface-variant border border-outline-variant">
+                      {perfil.email}
+                    </div>
+                  </div>
+
+                  {/* Nombre */}
+                  <div>
+                    <label htmlFor="nombre" className="font-label-md text-label-md text-on-surface-variant block mb-xs">
+                      Nombre completo
+                    </label>
+                    <input
+                        id="nombre"
+                        type="text"
+                        value={nombre}
+                        onChange={(e) => setNombre(e.target.value)}
+                        placeholder="Tu nombre completo"
+                        className="w-full border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+
+                  {/* Bio */}
+                  <div>
+                    <label htmlFor="bio" className="font-label-md text-label-md text-on-surface-variant block mb-xs">
+                      Sobre mí
+                    </label>
+                    <textarea
+                        id="bio"
+                        value={bio}
+                        onChange={(e) => setBio(e.target.value)}
+                        placeholder="Cuéntanos sobre ti, tus intereses y objetivos profesionales..."
+                        rows={4}
+                        className="w-full border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                    />
+                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-xs">
+                      +15% de completitud al agregar tu bio
+                    </p>
+                  </div>
+
+                  {/* Universidad y Programa */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+                    <div>
+                      <label htmlFor="universidad" className="font-label-md text-label-md text-on-surface-variant block mb-xs">
+                        Universidad
+                      </label>
+                      <input
+                          id="universidad"
                           type="text"
-                          value={newHabilidad}
-                          onChange={(e) => setNewHabilidad(e.target.value)}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
+                          value={universidad}
+                          onChange={(e) => setUniversidad(e.target.value)}
+                          placeholder="Ej: Corporación Universitaria Alexander Von Humboldt"
+                          className="w-full border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="programa" className="font-label-md text-label-md text-on-surface-variant block mb-xs">
+                        Programa académico
+                      </label>
+                      <input
+                          id="programa"
+                          type="text"
+                          value={programa}
+                          onChange={(e) => setPrograma(e.target.value)}
+                          placeholder="Ej: Ingeniería de Software"
+                          className="w-full border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Semestre */}
+                  <div>
+                    <label htmlFor="semestre" className="font-label-md text-label-md text-on-surface-variant block mb-xs">
+                      Semestre actual
+                    </label>
+                    <select
+                        id="semestre"
+                        value={semestre}
+                        onChange={(e) => setSemestre(e.target.value)}
+                        className="w-36 border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="">-- Selecciona</option>
+                      {Array.from({ length: 12 }, (_, i) => (
+                          <option key={i + 1} value={i + 1}>
+                            {i + 1}° semestre
+                          </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Habilidades (tag input) */}
+                  <div>
+                    <label className="font-label-md text-label-md text-on-surface-variant block mb-xs">
+                      Habilidades técnicas
+                    </label>
+
+                    {/* Tags existentes */}
+                    {habilidades.length > 0 && (
+                        <div className="flex flex-wrap gap-xs mb-sm" role="list" aria-label="Habilidades agregadas">
+                          {habilidades.map((h) => (
+                              <span
+                                  key={h}
+                                  role="listitem"
+                                  className="flex items-center gap-[2px] bg-primary-container text-on-primary-container font-label-sm text-label-sm px-2 py-1 rounded-full"
+                              >
+                                                {h}
+                                <button
+                                    type="button"
+                                    onClick={() => removeHabilidad(h)}
+                                    aria-label={`Eliminar habilidad ${h}`}
+                                    className="ml-[2px] hover:text-error transition-colors"
+                                >
+                                                    <span className="material-symbols-outlined text-[14px]">close</span>
+                                                </button>
+                                            </span>
+                          ))}
+                        </div>
+                    )}
+
+                    {/* Input para agregar */}
+                    <div className="flex gap-xs">
+                      <input
+                          type="text"
+                          value={habilidadInput}
+                          onChange={(e) => setHabilidadInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === ",") {
                               e.preventDefault();
-                              handleAddHabilidad();
+                              addHabilidad(habilidadInput);
                             }
                           }}
-                          placeholder="Nueva habilidad"
-                          className="p-1 border border-outline-variant rounded-md bg-surface-container-low text-on-surface text-label-sm focus:outline-none focus:border-primary-container"
-                        />
-                        <button onClick={handleAddHabilidad} className="border border-outline border-dashed text-on-surface-variant px-3 py-1 rounded-full font-label-sm text-label-sm hover:bg-surface-variant transition-colors flex items-center gap-base">
-                          <span className="material-symbols-outlined text-[14px]">add</span>
-                          Agregar
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    profile.habilidades && profile.habilidades.length > 0 ? (
-                      profile.habilidades.map((habilidad, index) => (
-                        <span key={index} className="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full font-label-sm text-label-sm">
-                          {habilidad}
-                        </span>
-                      ))
-                    ) : (
-                      <p className="font-body-sm text-body-sm text-on-surface-variant">No hay habilidades registradas.</p>
-                    )
-                  )}
-                </div>
-              </section>
-
-              {/* Work Experience (Static for now, as no edit logic requested) */}
-              <section className="bg-surface-container-lowest rounded-lg p-md border border-outline-variant shadow-sm">
-                <h2 className="font-headline-md text-headline-md text-on-surface mb-md">Experiencia</h2>
-                <div className="relative pl-sm border-l-2 border-surface-variant">
-                  {/* Timeline Item 1 */}
-                  <div className="mb-md relative">
-                    <div className="absolute -left-[23px] top-1 w-3 h-3 bg-primary-container rounded-full ring-4 ring-surface-container-lowest"></div>
-                    <h3 className="font-label-md text-label-md text-on-surface">Desarrollador Junior</h3>
-                    <div className="font-body-sm text-body-sm text-on-surface-variant mt-base">Tech Solutions</div>
-                    <div className="font-body-sm text-body-sm text-outline mt-base">Ene 2023 - Presente</div>
+                          placeholder="Ej: React, TypeScript, Docker..."
+                          aria-label="Agregar habilidad"
+                          className="flex-1 border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <button
+                          type="button"
+                          onClick={() => addHabilidad(habilidadInput)}
+                          className="px-sm py-xs bg-surface border border-outline-variant text-on-surface font-label-md text-label-md rounded hover:bg-surface-container-low transition-colors"
+                      >
+                        Agregar
+                      </button>
+                    </div>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-xs">
+                      Presiona Enter o coma para agregar · 3+ habilidades suman +20% de completitud
+                    </p>
                   </div>
-                  {/* Timeline Item 2 */}
-                  <div className="relative">
-                    <div className="absolute -left-[23px] top-1 w-3 h-3 bg-surface-variant rounded-full ring-4 ring-surface-container-lowest"></div>
-                    <h3 className="font-label-md text-label-md text-on-surface">Pasante de TI</h3>
-                    <div className="font-body-sm text-body-sm text-on-surface-variant mt-base">Innovatech SAS</div>
-                    <div className="font-body-sm text-body-sm text-outline mt-base">Jun 2022 - Dic 2022</div>
-                  </div>
-                </div>
-              </section>
-            </div>
 
-            {/* Right Column: Postulation History Table */}
-            <div className="md:col-span-2">
-              <section className="bg-surface-container-lowest rounded-lg border border-outline-variant shadow-sm overflow-hidden">
-                <div className="p-md border-b border-surface-variant flex justify-between items-center bg-surface-bright">
-                  <h2 className="font-headline-md text-headline-md text-on-surface">Historial de Postulaciones</h2>
-                  <button onClick={() => router.push("/postulaciones")} className="text-primary font-label-sm text-label-sm hover:underline">Ver todas</button>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-surface text-on-surface-variant font-label-md text-label-md border-b border-surface-variant">
-                        <th className="p-sm font-semibold">Vacante</th>
-                        <th className="p-sm font-semibold">Empresa</th>
-                        <th className="p-sm font-semibold">Fecha</th>
-                        <th className="p-sm font-semibold">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody className="font-body-sm text-body-sm text-on-surface divide-y divide-surface-variant">
-                      {postulaciones.length > 0 ? (
-                        postulaciones.map((postulacion) => (
-                          <tr key={postulacion.id} className="hover:bg-surface-container-low transition-colors">
-                            <td className="p-sm font-medium">{postulacion.vacante}</td>
-                            <td className="p-sm">{postulacion.empresa}</td>
-                            <td className="p-sm text-on-surface-variant">{new Date(postulacion.fecha).toLocaleDateString("es-ES")}</td>
-                            <td className="p-sm">
-                              <span className={`inline-flex items-center px-2 py-1 rounded-full font-label-sm text-label-sm ${getPostulationStatusClasses(postulacion.estado)}`}>
-                                {postulacion.estado.charAt(0).toUpperCase() + postulacion.estado.slice(1)}
-                              </span>
-                            </td>
-                          </tr>
-                        ))
+                  {/* Botón guardar */}
+                  <div className="flex justify-end pt-sm border-t border-outline-variant">
+                    <button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="px-lg py-sm bg-primary text-on-primary font-label-lg text-label-lg rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-xs"
+                    >
+                      {saving ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-on-primary border-t-transparent rounded-full animate-spin" />
+                            Guardando...
+                          </>
                       ) : (
-                        <tr>
-                          <td colSpan={4} className="p-sm text-center text-on-surface-variant">
-                            No tienes postulaciones recientes.
-                          </td>
-                        </tr>
+                          <>
+                            <span className="material-symbols-outlined text-[18px]">save</span>
+                            Guardar cambios
+                          </>
                       )}
-                    </tbody>
-                  </table>
+                    </button>
+                  </div>
                 </div>
-              </section>
-            </div>
+
+                {/* Tarjeta de tips de completitud */}
+                <div className="bg-surface border border-outline-variant rounded-xl shadow-level-1 p-md">
+                  <h2 className="font-title-md text-title-md font-semibold text-on-surface mb-sm flex items-center gap-xs">
+                    <span className="material-symbols-outlined text-primary text-[18px]">tips_and_updates</span>
+                    Mejora tu perfil
+                  </h2>
+                  <ul className="flex flex-col gap-xs font-body-sm text-body-sm text-on-surface-variant">
+                    <li className={`flex items-center gap-xs ${bio ? "line-through opacity-50" : ""}`}>
+                      <span className="material-symbols-outlined text-[14px]">{bio ? "check_circle" : "radio_button_unchecked"}</span>
+                      Agrega una descripción sobre ti (+15%)
+                    </li>
+                    <li className={`flex items-center gap-xs ${universidad ? "line-through opacity-50" : ""}`}>
+                      <span className="material-symbols-outlined text-[14px]">{universidad ? "check_circle" : "radio_button_unchecked"}</span>
+                      Indica tu universidad (+10%)
+                    </li>
+                    <li className={`flex items-center gap-xs ${programa ? "line-through opacity-50" : ""}`}>
+                      <span className="material-symbols-outlined text-[14px]">{programa ? "check_circle" : "radio_button_unchecked"}</span>
+                      Agrega tu programa académico (+10%)
+                    </li>
+                    <li className={`flex items-center gap-xs ${semestre ? "line-through opacity-50" : ""}`}>
+                      <span className="material-symbols-outlined text-[14px]">{semestre ? "check_circle" : "radio_button_unchecked"}</span>
+                      Indica tu semestre actual (+5%)
+                    </li>
+                    <li className={`flex items-center gap-xs ${habilidades.length >= 3 ? "line-through opacity-50" : ""}`}>
+                      <span className="material-symbols-outlined text-[14px]">{habilidades.length >= 3 ? "check_circle" : "radio_button_unchecked"}</span>
+                      Agrega al menos 3 habilidades (+20%)
+                    </li>
+                  </ul>
+                </div>
+              </div>
+          ) : (
+              /* Perfil no encontrado */
+              <div className="bg-surface border border-outline-variant rounded-xl p-lg text-center flex flex-col items-center gap-md">
+                <span className="material-symbols-outlined text-on-surface-variant text-[48px]">person_off</span>
+                <p className="font-body-md text-body-md text-on-surface-variant">
+                  {error ?? "No se encontró el perfil."}
+                </p>
+                <button
+                    onClick={() => { localStorage.removeItem("token"); router.push("/login"); }}
+                    className="px-md py-sm bg-primary text-on-primary font-label-md text-label-md rounded hover:opacity-90 transition-opacity"
+                >
+                  Volver al inicio de sesión
+                </button>
+              </div>
+          )}\r\n\r\n          {/* ── MIS POSTULACIONES ─────────────────────────────────────────── */}
+          <div className="bg-surface border border-outline-variant rounded-xl shadow-level-1 p-md">
+            <h2 className="font-title-md text-title-md font-semibold text-on-surface mb-sm flex items-center gap-xs">
+              <span className="material-symbols-outlined text-primary text-[18px]">work_history</span>
+              Mis postulaciones
+            </h2>
+
+            {postulacionesLoading ? (
+                <div className="flex justify-center py-6">
+                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+            ) : postulaciones.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-8 text-on-surface-variant">
+                  <span className="material-symbols-outlined text-[36px]">inbox</span>
+                  <p className="font-body-sm text-body-sm">Aún no te has postulado a ninguna vacante.</p>
+                  <a href="/vacantes" className="text-sm font-semibold text-primary hover:underline">Ver vacantes disponibles</a>
+                </div>
+            ) : (
+                <div className="flex flex-col gap-sm">
+                  {postulaciones.map((p) => (
+                      <div key={p.id} className="border border-outline-variant rounded-lg p-sm flex flex-col md:flex-row md:items-center md:justify-between gap-xs bg-surface-container-low">
+                        <div className="flex flex-col gap-1">
+                      <span className="font-label-sm text-label-sm text-on-surface-variant">
+                        ID vacante: <span className="font-mono text-xs">{p.vacanteId}</span>
+                      </span>
+                          <span className="font-body-sm text-body-sm text-on-surface-variant">
+                        Disponibilidad: {p.disponibilidad}
+                      </span>
+                          <span className="font-body-sm text-body-sm text-on-surface-variant">
+                        Expectativa salarial: {p.expectativaSalarial}
+                      </span>
+                        </div>
+                        <div className="flex items-center gap-sm">
+                      <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                          p.estado === "aceptada"   ? "bg-[#e8f5e9] text-[#1b5e20]" :
+                              p.estado === "rechazada"  ? "bg-[#ffdad6] text-[#93000a]" :
+                                  p.estado === "entrevista" ? "bg-[#e0e7ff] text-[#3730a3]" :
+                                      p.estado === "vista"      ? "bg-[#fef9c3] text-[#854d0e]" :
+                                          "bg-surface-variant text-on-surface-variant"
+                      }`}>
+                        {p.estado === "enviada"    ? "Enviada" :
+                            p.estado === "vista"      ? "Vista por la empresa" :
+                                p.estado === "entrevista" ? "En proceso" :
+                                    p.estado === "aceptada"   ? "Aceptada ✓" :
+                                        p.estado === "rechazada"  ? "No seleccionado" : p.estado}
+                      </span>
+                          <span className="font-label-sm text-label-sm text-on-surface-variant">
+                        {new Date(p.fecha).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" })}
+                      </span>
+                        </div>
+                      </div>
+                  ))}
+                </div>
+            )}
           </div>
+
         </main>
 
         {/* Footer */}
-        <footer className="bg-surface-container-highest w-full mt-auto">
-          <div className="w-full py-lg px-margin-mobile md:px-xl flex flex-col md:flex-row justify-between items-center gap-md max-w-container-max mx-auto">
-            <div className="font-headline-md text-headline-md font-bold text-primary text-center md:text-left">
-              EmpleoUni
-              <div className="font-body-sm text-body-sm text-on-surface font-normal mt-base">
-                © 2024 EmpleoUni - Talento Universitario Colombiano
-              </div>
-            </div>
-            <div className="flex flex-wrap justify-center gap-md font-body-sm text-body-sm text-on-surface-variant">
-              <a className="hover:underline transition-all opacity-80 hover:opacity-100" href="#">Contacto</a>
-              <a className="hover:underline transition-all opacity-80 hover:opacity-100" href="#">Términos y Condiciones</a>
-              <a className="hover:underline transition-all opacity-80 hover:opacity-100" href="#">Privacidad</a>
-            </div>
+        <footer className="bg-surface-container-highest w-full py-lg px-margin-mobile md:px-xl flex flex-col md:flex-row justify-between items-center gap-md mt-auto">
+          <span className="font-headline-md text-headline-md font-bold text-primary tracking-tight">EmpleoUni</span>
+          <p className="font-body-sm text-body-sm text-on-surface text-center md:text-left">
+            © 2024 EmpleoUni - Talento Universitario Colombiano
+          </p>
+          <div className="flex gap-md font-body-sm text-body-sm">
+            <a className="text-on-surface-variant hover:underline transition-all opacity-80 hover:opacity-100" href="#">Contacto</a>
+            <a className="text-on-surface-variant hover:underline transition-all opacity-80 hover:opacity-100" href="#">Términos y Condiciones</a>
+            <a className="text-on-surface-variant hover:underline transition-all opacity-80 hover:opacity-100" href="#">Privacidad</a>
           </div>
         </footer>
       </div>
-    </>
   );
 }

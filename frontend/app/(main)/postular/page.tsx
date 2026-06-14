@@ -1,535 +1,244 @@
-// frontend/app/(main)/postular/page.tsx
 "use client";
 
-import React, { useState, useEffect, FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { API_URLS, authHeaders, parseApiError } from "../../lib/api";
+import { API_URLS, authHeaders } from "../../lib/api";
 
-// Define the shape of the Vacante object
-interface Vacante {
+interface VacanteInfo {
     id: string;
     titulo: string;
     empresa: string;
     modalidad: string;
     ciudad: string;
-    salario: string;
+    salario?: string;
     descripcion: string;
-    requisitos: string[];
-    logoUrl?: string;
+    requisitos?: string[];
 }
 
 export default function PostularPage() {
     const router = useRouter();
+    const [vacante,          setVacante]          = useState<VacanteInfo | null>(null);
+    const [showSuccess,      setShowSuccess]      = useState(false);
+    const [loading,          setLoading]          = useState(false);
+    const [error,            setError]            = useState<string | null>(null);
+    const [carta,            setCarta]            = useState("");
+    const [expectativa,      setExpectativa]      = useState("");
+    const [disponibilidad,   setDisponibilidad]   = useState("inmediata");
 
-    const [vacante, setVacante] = useState<Vacante | null>(null);
-    const [shortCoverLetter, setShortCoverLetter] = useState("");
-    const [cartaMotivacion, setCartaMotivacion] = useState("");
-    const [expectativaSalarial, setExpectativaSalarial] = useState("");
-    const [disponibilidad, setDisponibilidad] = useState("");
-    const [cvFile, setCvFile] = useState<File | null>(null);
-    const [charCountShortCoverLetter, setCharCountShortCoverLetter] = useState(0);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [showSuccessModal, setShowSuccessModal] = useState(false);
-    const [shouldRedirect, setShouldRedirect] = useState(false);
-
-    // Efecto para cargar la vacante (corregido - sin setState síncrono conflictivo)
     useEffect(() => {
         const token = localStorage.getItem("token");
-        if (!token) {
-            router.push("/login");
-            return;
-        }
-
-        const vacantePostularString = localStorage.getItem("vacantePostular");
-        if (vacantePostularString) {
-            try {
-                const parsedVacante: Vacante = JSON.parse(vacantePostularString);
-                // eslint-disable-next-line react-hooks/set-state-in-effect
-                setVacante(parsedVacante);
-            } catch (e) {
-                console.error("Error parsing vacantePostular from localStorage", e);
-                setError("Error al cargar la información de la vacante.");
-            }
-        } else {
-            setError("No se encontró la vacante para postular.");
-            setShouldRedirect(true);
-        }
+        if (!token) { router.push("/login"); return; }
+        const raw = localStorage.getItem("vacantePostular");
+        if (!raw)  { router.push("/vacantes"); return; }
+        try { setVacante(JSON.parse(raw)); } catch { router.push("/vacantes"); }
     }, [router]);
 
-    // Efecto separado para la redirección (evita el warning)
-    useEffect(() => {
-        if (shouldRedirect) {
-            router.push("/vacantes");
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!carta.trim() || !expectativa.trim()) {
+            setError("Completa todos los campos."); return;
         }
-    }, [shouldRedirect, router]);
-
-    const handleSubmit = async (event: FormEvent) => {
-        event.preventDefault();
-        if (!vacante) {
-            setError("No hay vacante seleccionada para postular.");
-            return;
-        }
-        if (!disponibilidad) {
-            setError("Por favor, selecciona tu disponibilidad de inicio.");
-            return;
-        }
-        if (!expectativaSalarial) {
-            setError("Por favor, ingresa tu expectativa salarial.");
-            return;
-        }
-        if (!cartaMotivacion) {
-            setError("Por favor, cuéntanos por qué eres el candidato ideal.");
-            return;
-        }
-
-        setLoading(true);
-        setError(null);
-
         const token = localStorage.getItem("token");
-        if (!token) {
-            setError("No autorizado. Por favor, inicia sesión de nuevo.");
-            setLoading(false);
-            router.push("/login");
-            return;
-        }
-
+        if (!token || !vacante) return;
+        setLoading(true); setError(null);
         try {
-            const response = await fetch(`${API_URLS.perfiles}/postulaciones`, {
+            const res = await fetch(`${API_URLS.perfiles}/postulaciones`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...authHeaders(token),
-                },
+                headers: authHeaders(token),
                 body: JSON.stringify({
-                    vacanteId: vacante.id,
-                    cartaMotivacion,
-                    expectativaSalarial: parseFloat(expectativaSalarial),
-                    disponibilidad,
+                    vacanteId: vacante.id, cartaMotivacion: carta,
+                    expectativaSalarial: expectativa, disponibilidad,
                 }),
             });
-
-            if (!response.ok) {
-                throw new Error(await parseApiError(response, `Error: ${response.status} ${response.statusText}`));
-            }
-
-            // Clear form fields and show success modal
-            setShortCoverLetter("");
-            setCartaMotivacion("");
-            setExpectativaSalarial("");
-            setDisponibilidad("");
-            setCvFile(null);
-            setCharCountShortCoverLetter(0);
-            setShowSuccessModal(true);
+            const data = await res.json();
+            if (!res.ok) { setError(data.message || "Error al enviar la postulación."); return; }
             localStorage.removeItem("vacantePostular");
-        } catch (err: unknown) {
-            // ⚠️ Error corregido: en lugar de 'any', usamos 'unknown' y verificamos el tipo
-            if (err instanceof Error) {
-                setError(err.message || "Ocurrió un error inesperado al enviar la postulación.");
-            } else {
-                setError("Ocurrió un error inesperado al enviar la postulación.");
-            }
-        } finally {
-            setLoading(false);
-        }
+            setShowSuccess(true);
+        } catch { setError("Error de conexión."); }
+        finally { setLoading(false); }
     };
 
-    // ─── SUCCESS PAGE ────────────────────────────────────────────────────────
-    if (showSuccessModal) {
+    // ── PÁGINA DE ÉXITO ──────────────────────────────────────────────────────
+    if (showSuccess) {
         return (
-            <>
-                <div className="bg-background text-on-background min-h-screen flex flex-col pt-16 font-sans">
-                    {/* Navbar */}
-                    <nav className="fixed top-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-xl h-16 max-w-container-max mx-auto bg-surface border-b border-outline-variant shadow-sm">
-                        <span className="font-headline-md text-headline-md font-bold text-primary">EmpleoUni</span>
-                        <div className="hidden md:flex items-center gap-lg">
-                            <a className="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="/vacantes">Vacantes</a>
-                            <a className="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="/perfil">Mi Perfil</a>
-                        </div>
-                        <button
-                            onClick={() => { localStorage.removeItem("token"); router.push("/login"); }}
-                            className="font-label-md text-label-md bg-primary-container text-on-primary px-4 py-2 rounded font-bold hover:opacity-90 transition-opacity"
-                        >
-                            Cerrar sesión
-                        </button>
-                    </nav>
+            <div className="min-h-screen bg-[#f8f9fb] flex flex-col">
+                {/* Navbar mínimo */}
+                <nav className="h-14 border-b border-gray-200 bg-white flex items-center px-8">
+                    <span className="text-base font-bold" style={{ color: "#0d1c32" }}>
+                        Empleo<span style={{ color: "#f97316" }}>Uni</span>
+                    </span>
+                </nav>
 
-                    {/* Centered success content */}
-                    <main className="flex-grow flex items-center justify-center w-full px-margin-mobile md:px-xl py-xl">
-                        <div className="w-full max-w-md mx-auto flex flex-col items-center text-center gap-xl">
+                <div className="flex-1 flex items-center justify-center px-4 py-12">
+                    <div className="w-full max-w-2xl bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
 
-                            {/* Icon */}
-                            <div className="w-28 h-28 rounded-full bg-[#e8f5e9] flex items-center justify-center shadow-sm">
-                                <span className="material-symbols-outlined text-[56px] text-[#1b5e20]">check_circle</span>
+                        {/* Banda superior verde */}
+                        <div className="h-2 w-full bg-gradient-to-r from-green-400 to-emerald-500" />
+
+                        <div className="p-10 flex flex-col items-center text-center gap-8">
+                            {/* Icono */}
+                            <div className="w-20 h-20 rounded-full bg-green-50 border-4 border-green-100 flex items-center justify-center">
+                                <span className="material-symbols-outlined text-[40px] text-green-600">check_circle</span>
                             </div>
 
-                            {/* Message block */}
-                            <div className="flex flex-col gap-md">
-                                <h2 className="font-headline-lg text-headline-lg text-primary">
+                            {/* Título */}
+                            <div className="flex flex-col gap-3">
+                                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
                                     ¡Postulación enviada!
-                                </h2>
-                                <p className="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+                                </h1>
+                                <p className="text-gray-500 text-base leading-relaxed max-w-md">
                                     Tu perfil fue enviado exitosamente a{" "}
-                                    <span className="font-semibold text-on-surface">{vacante?.empresa}</span>.
-                                </p>
-                                <p className="font-body-md text-body-md text-on-surface-variant">
-                                    Puedes hacer seguimiento del proceso desde tu panel de control.
+                                    <span className="font-semibold text-gray-800">{vacante?.empresa}</span>.
+                                    Recibirás una notificación cuando la empresa revise tu candidatura.
                                 </p>
                             </div>
 
-                            {/* Divider */}
-                            <div className="w-full h-px bg-outline-variant" />
+                            {/* Card resumen de la vacante */}
+                            <div className="w-full rounded-xl bg-gray-50 border border-gray-200 p-5 flex items-center gap-4 text-left">
+                                <div className="w-12 h-12 rounded-xl bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-sm">
+                                    <span className="text-xl font-bold text-gray-700">
+                                        {vacante?.empresa?.charAt(0).toUpperCase()}
+                                    </span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-semibold text-gray-900 truncate">{vacante?.titulo}</p>
+                                    <p className="text-sm text-gray-500">{vacante?.empresa} · {vacante?.ciudad}</p>
+                                </div>
+                                <span className="shrink-0 text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    Enviada
+                                </span>
+                            </div>
 
-                            {/* Actions */}
-                            <div className="flex flex-col sm:flex-row gap-md w-full">
+                            {/* Pasos informativos */}
+                            <div className="w-full grid grid-cols-3 gap-4">
+                                {[
+                                    { icon: "mark_email_read", label: "Postulación enviada",   desc: "Tu perfil está en revisión",   done: true  },
+                                    { icon: "visibility",       label: "Revisión de empresa",   desc: "La empresa verá tu perfil",    done: false },
+                                    { icon: "handshake",        label: "Respuesta",             desc: "En 3–7 días hábiles",          done: false },
+                                ].map(({ icon, label, desc, done }) => (
+                                    <div key={label} className={`flex flex-col items-center gap-2 p-4 rounded-xl border ${done ? "bg-emerald-50 border-emerald-200" : "bg-gray-50 border-gray-200"}`}>
+                                        <span className={`material-symbols-outlined text-[24px] ${done ? "text-emerald-600" : "text-gray-400"}`}>{icon}</span>
+                                        <span className={`text-xs font-semibold text-center ${done ? "text-emerald-700" : "text-gray-600"}`}>{label}</span>
+                                        <span className="text-xs text-gray-400 text-center">{desc}</span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Acciones */}
+                            <div className="flex flex-col sm:flex-row gap-3 w-full">
                                 <button
                                     onClick={() => router.push("/vacantes")}
-                                    className="flex-1 font-label-md text-label-md font-bold px-lg py-3 rounded bg-primary text-on-primary hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-sm"
+                                    className="flex-1 flex items-center justify-center gap-2 py-3 px-6 bg-gray-900 text-white font-semibold rounded-xl hover:bg-gray-800 transition-colors text-sm"
                                 >
                                     <span className="material-symbols-outlined text-[18px]">search</span>
                                     Ver más vacantes
                                 </button>
                                 <button
                                     onClick={() => router.push("/perfil")}
-                                    className="flex-1 font-label-md text-label-md px-lg py-3 rounded border border-outline-variant text-primary hover:bg-surface-variant transition-colors flex items-center justify-center gap-2"
+                                    className="flex-1 flex items-center justify-center gap-2 py-3 px-6 bg-white text-gray-700 font-semibold border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors text-sm"
                                 >
-                                    <span className="material-symbols-outlined text-[18px]">person</span>
+                                    <span className="material-symbols-outlined text-[18px]">manage_accounts</span>
                                     Mis postulaciones
                                 </button>
                             </div>
-
-                            {/* Small hint */}
-                            <p className="font-body-sm text-body-sm text-on-surface-variant opacity-70">
-                                Las empresas suelen responder en un plazo de 3 a 7 días hábiles.
-                            </p>
                         </div>
-                    </main>
-
-                    {/* Footer */}
-                    <footer className="w-full py-lg px-margin-mobile md:px-xl flex flex-col md:flex-row justify-between items-center gap-md bg-surface-container-highest mt-auto">
-                        <div className="flex flex-col items-center md:items-start gap-1">
-                            <span className="font-headline-md text-headline-md font-bold text-primary">EmpleoUni</span>
-                            <span className="font-body-sm text-body-sm text-on-surface-variant">© 2024 EmpleoUni - Talento Universitario Colombiano</span>
-                        </div>
-                        <div className="flex items-center gap-md">
-                            <a className="font-body-sm text-body-sm text-on-surface-variant hover:underline opacity-80 hover:opacity-100" href="#">Contacto</a>
-                            <a className="font-body-sm text-body-sm text-on-surface-variant hover:underline opacity-80 hover:opacity-100" href="#">Términos y Condiciones</a>
-                            <a className="font-body-sm text-body-sm text-on-surface-variant hover:underline opacity-80 hover:opacity-100" href="#">Privacidad</a>
-                        </div>
-                    </footer>
+                    </div>
                 </div>
-            </>
-        );
-    }
-    // ─────────────────────────────────────────────────────────────────────────
-
-    if (!vacante && !error && !shouldRedirect) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-background text-on-background">
-                <p className="text-primary">Cargando información de la vacante...</p>
             </div>
         );
     }
 
-    if (error && !vacante) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-background text-on-background">
-                <p className="text-error">{error}</p>
-                <button
-                    onClick={() => router.push("/vacantes")}
-                    className="ml-4 px-4 py-2 bg-primary text-on-primary rounded"
-                >
-                    Volver a Vacantes
-                </button>
-            </div>
-        );
-    }
+    // ── FORMULARIO ────────────────────────────────────────────────────────────
+    if (!vacante) return null;
 
     return (
-        <>
-            <div className="bg-background text-on-background min-h-screen flex flex-col pt-16 font-sans">
-                {/* TopNavBar Component */}
-                <nav className="fixed top-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-xl h-16 max-w-container-max mx-auto bg-surface border-b border-outline-variant shadow-sm transition-transform">
-                    <div className="flex items-center gap-md">
-            <span className="font-headline-md text-headline-md font-bold text-primary">
-              EmpleoUni
-            </span>
-                    </div>
-                    <div className="hidden md:flex items-center gap-lg">
-                        <a
-                            className="font-body-md text-body-md text-primary border-b-2 border-primary pb-1 scale-95 active:scale-90 transition-transform"
-                            href="/vacantes"
-                        >
-                            Vacantes
-                        </a>
-                        <a
-                            className="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors scale-95 active:scale-90 transition-transform"
-                            href="/perfil"
-                        >
-                            Mi Perfil
-                        </a>
-                    </div>
-                    <div className="flex items-center gap-md">
-                        <button
-                            onClick={() => {
-                                localStorage.removeItem("token");
-                                router.push("/login");
-                            }}
-                            className="font-label-md text-label-md bg-primary-container text-on-primary px-4 py-2 rounded font-bold hover:opacity-90 transition-opacity"
-                        >
-                            Cerrar sesión
-                        </button>
-                    </div>
-                </nav>
+        <div className="min-h-screen bg-[#f8f9fb] flex flex-col pt-14">
+            <nav className="h-14 border-b border-gray-200 bg-white flex items-center justify-between px-8 fixed top-0 w-full z-50">
+                <span className="text-base font-bold" style={{ color: "#0d1c32" }}>
+                    Empleo<span style={{ color: "#f97316" }}>Uni</span>
+                </span>
+                <button onClick={() => router.back()} className="text-sm text-gray-500 hover:text-gray-900 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[18px]">arrow_back</span> Volver
+                </button>
+            </nav>
 
-                {/* Main Content Canvas */}
-                <main className="flex-grow w-full max-w-container-max mx-auto px-margin-mobile md:px-xl py-lg md:py-xl flex flex-col gap-lg">
-                    <header className="w-full">
-                        <button
-                            onClick={() => router.back()}
-                            className="inline-flex items-center gap-xs font-label-md text-label-md text-on-surface-variant border border-outline-variant px-3 py-1.5 rounded-full hover:bg-surface-variant transition-colors bg-transparent w-fit"
-                        >
-                            <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-                            Volver a vacantes
-                        </button>
-                    </header>
+            <div className="flex-1 flex items-center justify-center px-4 py-10">
+                <div className="w-full max-w-2xl bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="h-2 w-full" style={{ backgroundImage: "linear-gradient(to right, #0d1c32, #f97316)" }} />
 
-                    {/* Two Column Layout Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-lg md:gap-xl items-start">
-                        {/* LEFT COLUMN: Job Detail Card */}
-                        <aside className="col-span-1 md:col-span-5 bg-surface-container-lowest rounded-lg border border-outline-variant shadow-sm p-md flex flex-col gap-md h-auto md:sticky md:top-24">
-                            <div className="flex flex-col gap-sm">
-                                <div className="w-16 h-16 rounded-lg overflow-hidden border border-outline-variant bg-surface-container-low flex items-center justify-center">
-                                    <img
-                                        alt={vacante?.empresa || "Company Logo placeholder"}
-                                        className="object-cover w-full h-full"
-                                        src={
-                                            vacante?.logoUrl ||
-                                            "https://lh3.googleusercontent.com/aida-public/AB6AXuA072duUR-a5tlnppt8_GJKK6mMgnlUMFAeHwnPNsBYEV8ABDrjVrXbGA-Dgmxy9wzN7lHGAmKABaS5kjntlcydj0pnP1JKVRNc0p-7WsbShvr97evGypi8glrwogYpdkj-0K612k5-X1hRMhqVkjfPqnafnlAVnE000YgAiBXrm3jSDD1QUvdm-JjjcDKoAFbkSxGC37AwPsbF1vzsCrOE9JwpReKl-1iEE3C82sVxptj-BIFgmv2LKR1SOiYPFEV_SAHoFx3l5K4"
-                                        }
+                    <div className="p-8 flex flex-col gap-7">
+                        {/* Vacante info */}
+                        <div className="flex items-center gap-4 pb-5 border-b border-gray-100">
+                            <div className="w-12 h-12 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
+                                <span className="text-xl font-bold text-gray-700">{vacante.empresa.charAt(0).toUpperCase()}</span>
+                            </div>
+                            <div>
+                                <h1 className="text-lg font-bold text-gray-900">{vacante.titulo}</h1>
+                                <p className="text-sm text-gray-500">{vacante.empresa} · {vacante.ciudad}</p>
+                            </div>
+                        </div>
+
+                        <h2 className="text-base font-semibold text-gray-800">Completa tu postulación</h2>
+
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>
+                        )}
+
+                        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-gray-700">
+                                    Carta de motivación <span className="text-red-500">*</span>
+                                </label>
+                                <textarea
+                                    value={carta} onChange={(e) => setCarta(e.target.value)} required rows={5}
+                                    placeholder="Cuéntale a la empresa por qué eres el candidato ideal..."
+                                    className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-gray-500 resize-none"
+                                />
+                                <p className="text-xs text-gray-400">{carta.length}/1000 caracteres recomendados</p>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-sm font-semibold text-gray-700">
+                                        Expectativa salarial <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text" value={expectativa} onChange={(e) => setExpectativa(e.target.value)} required
+                                        placeholder="Ej: $1.500.000"
+                                        className="border border-gray-300 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-gray-500"
                                     />
                                 </div>
-                                <div>
-                                    <h1 className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-primary mb-1">
-                                        {vacante?.titulo}
-                                    </h1>
-                                    <p className="font-body-md text-body-md text-on-surface-variant">
-                                        {vacante?.empresa}
-                                    </p>
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-sm font-semibold text-gray-700">Disponibilidad</label>
+                                    <select
+                                        value={disponibilidad} onChange={(e) => setDisponibilidad(e.target.value)}
+                                        className="border border-gray-300 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:border-gray-500 bg-white"
+                                    >
+                                        <option value="inmediata">Inmediata</option>
+                                        <option value="15 días">En 15 días</option>
+                                        <option value="1 mes">En 1 mes</option>
+                                        <option value="negociable">Negociable</option>
+                                    </select>
                                 </div>
                             </div>
 
-                            <div className="flex flex-wrap gap-xs">
-                <span className="px-2 py-1 rounded bg-surface-variant text-on-surface font-label-sm text-label-sm flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[14px]">work</span>{" "}
-                    {vacante?.modalidad}
-                </span>
-                                <span className="px-2 py-1 rounded bg-surface-variant text-on-surface font-label-sm text-label-sm flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[14px]">location_on</span>{" "}
-                                    {vacante?.ciudad}
-                </span>
-                                <span className="px-2 py-1 rounded bg-[#e8f5e9] text-[#1b5e20] font-label-sm text-label-sm flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[14px]">payments</span>{" "}
-                                    {vacante?.salario}
-                </span>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => router.back()}
+                                        className="flex-1 py-3 px-5 border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+                                    Cancelar
+                                </button>
+                                <button type="submit" disabled={loading}
+                                        className="flex-2 py-3 px-8 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+                                        style={{ backgroundColor: "#0d1c32", flex: 2 }}>
+                                    {loading
+                                        ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Enviando...</>
+                                        : <><span className="material-symbols-outlined text-[16px]">send</span> Enviar postulación</>}
+                                </button>
                             </div>
-                            <hr className="border-outline-variant w-full" />
-
-                            <div className="flex flex-col gap-xs">
-                                <h3 className="font-label-md text-label-md text-primary">
-                                    Descripción del rol
-                                </h3>
-                                <p className="font-body-sm text-body-sm text-on-surface-variant">
-                                    {vacante?.descripcion}
-                                </p>
-                            </div>
-
-                            <div className="flex flex-col gap-xs">
-                                <h3 className="font-label-md text-label-md text-primary">
-                                    Requisitos clave
-                                </h3>
-                                <ul className="flex flex-col gap-2 font-body-sm text-body-sm text-on-surface-variant">
-                                    {vacante?.requisitos && vacante.requisitos.map((req, index) => (
-                                        <li key={index} className="flex items-start gap-2">
-                      <span className="material-symbols-outlined text-[16px] text-primary-container mt-0.5">
-                        check_circle
-                      </span>
-                                            {req}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </aside>
-
-                        {/* RIGHT COLUMN: Application Form */}
-                        <section className="col-span-1 md:col-span-7">
-                            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-sm p-md md:p-lg flex flex-col gap-lg">
-                                <div className="flex flex-col gap-xs">
-                                    <h2 className="font-headline-md text-headline-md text-primary">
-                                        Completa tu postulación
-                                    </h2>
-                                    <p className="font-body-sm text-body-sm text-on-surface-variant">
-                                        Revisa cuidadosamente la información antes de enviarla. Tu perfil
-                                        académico será adjuntado automáticamente.
-                                    </p>
-                                </div>
-
-                                {error && (
-                                    <div className="text-error font-bold text-center p-2 rounded-md bg-error-container">
-                                        {error}
-                                    </div>
-                                )}
-
-                                <form className="flex flex-col gap-md" onSubmit={handleSubmit}>
-                                    {/* File Upload */}
-                                    <div className="flex flex-col gap-xs">
-                                        <label className="font-label-md text-label-md text-primary">
-                                            Subir hoja de vida <span className="text-error">*</span>
-                                        </label>
-                                        <div className="w-full border-2 border-dashed border-outline-variant rounded-lg bg-surface-container-low hover:bg-surface-variant transition-colors p-lg flex flex-col items-center justify-center gap-sm group">
-                      <span className="material-symbols-outlined text-[40px] text-on-surface-variant group-hover:text-primary-container transition-colors">
-                        picture_as_pdf
-                      </span>
-                                            <div className="text-center flex flex-col gap-1">
-                        <span className="font-body-md text-body-md text-primary">
-                          {cvFile ? cvFile.name : "Selecciona un archivo PDF"}
-                        </span>
-                                                <span className="font-body-sm text-body-sm text-on-surface-variant">
-                          o arrástralo y suéltalo aquí (Max 5MB)
-                        </span>
-                                            </div>
-                                            <input
-                                                accept=".pdf"
-                                                className="hidden"
-                                                type="file"
-                                                onChange={(e) => setCvFile(e.target.files ? e.target.files[0] : null)}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Disponibilidad de inicio */}
-                                    <div className="flex flex-col gap-xs">
-                                        <label className="font-label-md text-label-md text-primary" htmlFor="disponibilidad">
-                                            Disponibilidad de inicio <span className="text-error">*</span>
-                                        </label>
-                                        <div className="relative w-full md:w-1/2">
-                      <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">
-                        calendar_month
-                      </span>
-                                            <input
-                                                className="w-full pl-10 pr-4 py-3 rounded border border-outline-variant bg-surface-container-lowest font-body-sm text-body-sm text-on-surface focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all"
-                                                id="disponibilidad"
-                                                required
-                                                type="date"
-                                                value={disponibilidad}
-                                                onChange={(e) => setDisponibilidad(e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Expectativa Salarial */}
-                                    <div className="flex flex-col gap-xs">
-                                        <label className="font-label-md text-label-md text-primary" htmlFor="expectativaSalarial">
-                                            Expectativa Salarial (COP) <span className="text-error">*</span>
-                                        </label>
-                                        <input
-                                            className="w-full px-4 py-3 rounded border border-outline-variant bg-surface-container-lowest font-body-sm text-body-sm text-on-surface focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all"
-                                            id="expectativaSalarial"
-                                            required
-                                            type="number"
-                                            placeholder="Ej: 3000000"
-                                            value={expectativaSalarial}
-                                            onChange={(e) => setExpectativaSalarial(e.target.value)}
-                                        />
-                                    </div>
-
-                                    {/* Carta de presentación breve */}
-                                    <div className="flex flex-col gap-xs">
-                                        <div className="flex justify-between items-end">
-                                            <label className="font-label-md text-label-md text-primary" htmlFor="shortCoverLetter">
-                                                Carta de presentación (Breve)
-                                            </label>
-                                            <span className="font-label-sm text-label-sm text-on-surface-variant" id="char-count-1">
-                        {charCountShortCoverLetter}/300
-                      </span>
-                                        </div>
-                                        <textarea
-                                            className="w-full px-4 py-3 rounded border border-outline-variant bg-surface-container-lowest font-body-sm text-body-sm text-on-surface focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all resize-none"
-                                            id="shortCoverLetter"
-                                            maxLength={300}
-                                            rows={3}
-                                            placeholder="Destaca brevemente tu interés en esta empresa..."
-                                            value={shortCoverLetter}
-                                            onChange={(e) => {
-                                                setShortCoverLetter(e.target.value);
-                                                setCharCountShortCoverLetter(e.target.value.length);
-                                            }}
-                                        ></textarea>
-                                    </div>
-
-                                    {/* ¿Por qué eres el candidato ideal? */}
-                                    <div className="flex flex-col gap-xs">
-                                        <label className="font-label-md text-label-md text-primary" htmlFor="idealCandidate">
-                                            ¿Por qué eres el candidato ideal? <span className="text-error">*</span>
-                                        </label>
-                                        <textarea
-                                            className="w-full px-4 py-3 rounded border border-outline-variant bg-surface-container-lowest font-body-sm text-body-sm text-on-surface focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all resize-y"
-                                            id="idealCandidate"
-                                            placeholder="Cuéntanos sobre tus habilidades, proyectos académicos relevantes o experiencias previas que te hacen el fit perfecto para este rol..."
-                                            required
-                                            rows={5}
-                                            value={cartaMotivacion}
-                                            onChange={(e) => setCartaMotivacion(e.target.value)}
-                                        ></textarea>
-                                    </div>
-
-                                    <div className="w-full flex items-center gap-sm my-xs">
-                                        <div className="flex-grow h-px bg-outline-variant"></div>
-                                        <span className="font-label-sm text-label-sm text-on-surface-variant">
-                      Paso final
-                    </span>
-                                        <div className="flex-grow h-px bg-outline-variant"></div>
-                                    </div>
-
-                                    <div className="flex justify-end pt-xs">
-                                        <button
-                                            type="submit"
-                                            disabled={loading}
-                                            className="w-full md:w-auto font-label-md text-label-md font-bold px-xl py-3 rounded bg-primary text-on-primary hover:bg-primary-container transition-colors shadow-sm hover:shadow-lg flex items-center justify-center gap-2"
-                                        >
-                                            {loading ? "Enviando..." : "Enviar postulación"}
-                                            <span className="material-symbols-outlined text-[18px]">send</span>
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        </section>
+                        </form>
                     </div>
-                </main>
-
-                {/* Footer */}
-                <footer className="w-full py-lg px-margin-mobile md:px-xl flex flex-col md:flex-row justify-between items-center gap-md bg-surface-container-highest mt-auto">
-                    <div className="flex flex-col items-center md:items-start gap-1">
-            <span className="font-headline-md text-headline-md font-bold text-primary">
-              EmpleoUni
-            </span>
-                        <span className="font-body-sm text-body-sm text-on-surface-variant">
-              © 2024 EmpleoUni - Talento Universitario Colombiano
-            </span>
-                    </div>
-                    <div className="flex items-center gap-md">
-                        <a className="font-body-sm text-body-sm text-on-surface-variant hover:underline transition-all opacity-80 hover:opacity-100" href="#">
-                            Contacto
-                        </a>
-                        <a className="font-body-sm text-body-sm text-on-surface-variant hover:underline transition-all opacity-80 hover:opacity-100" href="#">
-                            Términos y Condiciones
-                        </a>
-                        <a className="font-body-sm text-body-sm text-on-surface-variant hover:underline transition-all opacity-80 hover:opacity-100" href="#">
-                            Privacidad
-                        </a>
-                    </div>
-                </footer>
+                </div>
             </div>
-        </>
+        </div>
     );
 }

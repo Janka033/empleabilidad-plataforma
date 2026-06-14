@@ -1,26 +1,28 @@
 const { Pool } = require("pg");
 
 const pool = new Pool({
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT || 5432,
+    host:     process.env.DB_HOST,
+    port:     process.env.DB_PORT || 5432,
     database: process.env.DB_NAME,
-    user: process.env.DB_USER,
+    user:     process.env.DB_USER,
     password: process.env.DB_PASSWORD,
 });
+
+const ESTADOS_VALIDOS = ["enviada", "vista", "entrevista", "rechazada", "aceptada"];
 
 const PostulacionModel = {
     // Estudiante: mis postulaciones
     async findByPerfilId(perfilId) {
         const { rows } = await pool.query(
             `SELECT
-                 p.id,
-                 p.vacante_id            AS "vacanteId",
-                 p.carta_motivacion      AS "cartaMotivacion",
-                 p.expectativa_salarial  AS "expectativaSalarial",
-                 p.disponibilidad,
-                 p.fecha_disponible      AS "fechaDisponible",
-                 p.estado,
-                 p.created_at            AS fecha
+                p.id,
+                p.vacante_id           AS "vacanteId",
+                p.carta_motivacion     AS "cartaMotivacion",
+                p.expectativa_salarial AS "expectativaSalarial",
+                p.disponibilidad,
+                p.fecha_disponible     AS "fechaDisponible",
+                p.estado,
+                p.created_at           AS fecha
              FROM postulaciones p
              WHERE p.perfil_id = $1
              ORDER BY p.created_at DESC`,
@@ -29,28 +31,28 @@ const PostulacionModel = {
         return rows;
     },
 
-    // Empresa: ver todos los postulados a una vacante, con datos del perfil
+    // Empresa: ver todos los postulados a una vacante con datos de perfil
     async findByVacanteId(vacanteId) {
         const { rows } = await pool.query(
             `SELECT
-                 p.id,
-                 p.vacante_id            AS "vacanteId",
-                 p.carta_motivacion      AS "cartaMotivacion",
-                 p.expectativa_salarial  AS "expectativaSalarial",
-                 p.disponibilidad,
-                 p.fecha_disponible      AS "fechaDisponible",
-                 p.estado,
-                 p.created_at            AS fecha,
-                 pf.id                   AS "perfilId",
-                 pf.nombre,
-                 pf.email,
-                 pf.universidad,
-                 pf.programa,
-                 pf.semestre,
-                 pf.habilidades,
-                 pf.completitud
+                p.id,
+                p.vacante_id           AS "vacanteId",
+                p.carta_motivacion     AS "cartaMotivacion",
+                p.expectativa_salarial AS "expectativaSalarial",
+                p.disponibilidad,
+                p.fecha_disponible     AS "fechaDisponible",
+                p.estado,
+                p.created_at           AS fecha,
+                pf.id                  AS "perfilId",
+                pf.nombre,
+                pf.email,
+                pf.universidad,
+                pf.programa,
+                pf.semestre,
+                pf.habilidades,
+                pf.completitud
              FROM postulaciones p
-                      JOIN perfiles pf ON pf.id = p.perfil_id
+             JOIN perfiles pf ON pf.id = p.perfil_id
              WHERE p.vacante_id = $1
              ORDER BY p.created_at DESC`,
             [vacanteId]
@@ -69,23 +71,37 @@ const PostulacionModel = {
              VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING
                 id,
-                vacante_id              AS "vacanteId",
-                carta_motivacion        AS "cartaMotivacion",
-                expectativa_salarial    AS "expectativaSalarial",
+                vacante_id             AS "vacanteId",
+                carta_motivacion       AS "cartaMotivacion",
+                expectativa_salarial   AS "expectativaSalarial",
                 disponibilidad,
-                fecha_disponible        AS "fechaDisponible",
+                fecha_disponible       AS "fechaDisponible",
                 estado,
-                created_at              AS fecha`,
-            [
-                perfilId,
-                vacanteId,
-                cartaMotivacion,
-                String(expectativaSalarial || ""),
-                disponibilidad,
-                fechaDisponible,
-            ]
+                created_at             AS fecha`,
+            [perfilId, vacanteId, cartaMotivacion, String(expectativaSalarial || ""), disponibilidad, fechaDisponible]
         );
         return rows[0];
+    },
+
+    // Empresa: cambiar estado de una postulación
+    async updateEstado(postulacionId, estado) {
+        if (!ESTADOS_VALIDOS.includes(estado)) return null;
+
+        const { rows } = await pool.query(
+            `UPDATE postulaciones
+             SET estado = $2
+             WHERE id = $1
+             RETURNING
+                id,
+                vacante_id             AS "vacanteId",
+                carta_motivacion       AS "cartaMotivacion",
+                expectativa_salarial   AS "expectativaSalarial",
+                disponibilidad,
+                estado,
+                created_at             AS fecha`,
+            [postulacionId, estado]
+        );
+        return rows[0] || null;
     },
 };
 

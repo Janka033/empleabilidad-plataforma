@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { API_URLS, authHeaders, parseApiError } from "../../lib/api";
+import { API_URLS, authHeaders } from "../../lib/api";
 
 interface Postulacion {
   id: string;
@@ -12,539 +12,331 @@ interface Postulacion {
   disponibilidad: string;
   estado: string;
   fecha: string;
+  // enriquecido en cliente
+  vacanteTitle?: string;
+  vacanteEmpresa?: string;
+  vacanteModalidad?: string;
+  vacanteCiudad?: string;
 }
 
 interface Perfil {
-  id: string;
-  user_id: string;
   nombre: string;
   email: string;
-  bio?: string;
   universidad?: string;
   programa?: string;
   semestre?: number;
   habilidades?: string[];
   completitud: number;
-  updated_at?: string;
+}
+
+const ESTADO_CONFIG: Record<string, { label: string; bg: string; text: string; icon: string }> = {
+  enviada:    { label: "Enviada",    bg: "bg-gray-100",         text: "text-gray-600",     icon: "schedule"       },
+  vista:      { label: "Vista",      bg: "bg-amber-50",         text: "text-amber-700",    icon: "visibility"     },
+  entrevista: { label: "En proceso", bg: "bg-blue-50",          text: "text-blue-700",     icon: "groups"         },
+  aceptada:   { label: "Aceptada",   bg: "bg-emerald-50",       text: "text-emerald-700",  icon: "check_circle"   },
+  rechazada:  { label: "Rechazada",  bg: "bg-red-50",           text: "text-red-600",      icon: "cancel"         },
+};
+
+function estadoCfg(e: string) {
+  return ESTADO_CONFIG[e] ?? ESTADO_CONFIG.enviada;
 }
 
 export default function PerfilPage() {
   const router = useRouter();
+  const [perfil,            setPerfil]            = useState<Perfil | null>(null);
+  const [postulaciones,     setPostulaciones]     = useState<Postulacion[]>([]);
+  const [loadingPerfil,     setLoadingPerfil]     = useState(true);
+  const [loadingPostul,     setLoadingPostul]     = useState(true);
+  const [tab,               setTab]               = useState<"perfil" | "postulaciones">("postulaciones");
 
-  const [perfil, setPerfil] = useState<Perfil | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-
-  // Campos del formulario
-  const [nombre, setNombre] = useState("");
-  const [bio, setBio] = useState("");
-  const [universidad, setUniversidad] = useState("");
-  const [programa, setPrograma] = useState("");
-  const [semestre, setSemestre] = useState<string>("");
-  const [habilidades, setHabilidades] = useState<string[]>([]);
-  const [habilidadInput, setHabilidadInput] = useState("");
-
-  // Postulaciones del estudiante
-  const [postulaciones, setPostulaciones] = useState<Postulacion[]>([]);
-  const [postulacionesLoading, setPostulacionesLoading] = useState(false);
-
-  // ── CARGA DEL PERFIL ─────────────────────────────────────────────────────
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
+    if (!token) { router.push("/login"); return; }
 
-    const loadPerfil = async () => {
-      try {
-        const res = await fetch(`${API_URLS.perfiles}/perfiles/me`, {
-          headers: authHeaders(token),
-        });
+    // Cargar perfil
+    fetch(`${API_URLS.perfiles}/perfiles/me`, { headers: authHeaders(token) })
+        .then((r) => r.ok ? r.json() : null)
+        .then((d) => { if (d) setPerfil(d); })
+        .finally(() => setLoadingPerfil(false));
 
-        if (res.status === 401) {
-          localStorage.removeItem("token");
-          router.push("/login");
-          return;
-        }
-
-        if (res.status === 404) {
-          // Perfil todavía no creado (puede ocurrir si ms-perfiles estuvo caído al registrarse)
-          setError("Tu perfil aún no ha sido creado. Cierra sesión, vuelve a registrarte o contacta soporte.");
-          setLoading(false);
-          return;
-        }
-
-        if (!res.ok) {
-          throw new Error(await parseApiError(res, "Error al cargar el perfil"));
-        }
-
-        const data: Perfil = await res.json();
-        setPerfil(data);
-
-        // Poblar el formulario con los datos actuales
-        setNombre(data.nombre ?? "");
-        setBio(data.bio ?? "");
-        setUniversidad(data.universidad ?? "");
-        setPrograma(data.programa ?? "");
-        setSemestre(data.semestre?.toString() ?? "");
-        setHabilidades(data.habilidades ?? []);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Error de conexión con el servidor");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadPerfil();
+    // Cargar postulaciones y enriquecer con título de vacante
+    fetch(`${API_URLS.perfiles}/postulaciones/me`, { headers: authHeaders(token) })
+        .then((r) => r.ok ? r.json() : [])
+        .then(async (lista: Postulacion[]) => {
+          // Para cada postulación, buscar la vacante en paralelo (máximo 6 simultáneos)
+          const enriquecidas = await Promise.all(
+              lista.map(async (p) => {
+                try {
+                  const vr = await fetch(`${API_URLS.vacantes}/vacantes/${p.vacanteId}`, {
+                    headers: authHeaders(token),
+                  });
+                  if (vr.ok) {
+                    const v = await vr.json();
+                    return {
+                      ...p,
+                      vacanteTitle:    v.titulo,
+                      vacanteEmpresa:  v.empresa,
+                      vacanteModalidad: v.modalidad,
+                      vacanteCiudad:   v.ciudad,
+                    };
+                  }
+                } catch {}
+                return p;
+              })
+          );
+          setPostulaciones(enriquecidas);
+        })
+        .finally(() => setLoadingPostul(false));
   }, [router]);
 
-  // ── CARGA DE POSTULACIONES ────────────────────────────────────────────────
-  const loadPostulaciones = useCallback(async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-    setPostulacionesLoading(true);
-    try {
-      const res = await fetch(`${API_URLS.perfiles}/postulaciones/me`, {
-        headers: authHeaders(token),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPostulaciones(data);
-      }
-    } catch { /* silenciar */ } finally {
-      setPostulacionesLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadPostulaciones(); }, [loadPostulaciones]);
-  const handleSave = async () => {
-    if (!perfil) return;
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    setSaving(true);
-    setError(null);
-    setSuccessMsg(null);
-
-    try {
-      const res = await fetch(`${API_URLS.perfiles}/perfiles/${perfil.id}`, {
-        method: "PUT",
-        headers: authHeaders(token),
-        body: JSON.stringify({
-          nombre:      nombre || undefined,
-          bio:         bio || undefined,
-          universidad: universidad || undefined,
-          programa:    programa || undefined,
-          semestre:    semestre ? parseInt(semestre) : undefined,
-          habilidades: habilidades.length > 0 ? habilidades : undefined,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error(await parseApiError(res, "No se pudieron guardar los cambios"));
-      }
-
-      const updated: Perfil = await res.json();
-      setPerfil(updated);
-      setSuccessMsg("Perfil actualizado correctamente");
-      setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al guardar");
-    } finally {
-      setSaving(false);
-    }
+  const handleLogout = () => {
+    localStorage.clear();
+    document.cookie = "token=; path=/; max-age=0";
+    router.push("/login");
   };
 
-  // ── HABILIDADES ──────────────────────────────────────────────────────────
-  const addHabilidad = (value: string) => {
-    const trimmed = value.replace(/,/g, "").trim();
-    if (trimmed && !habilidades.includes(trimmed)) {
-      setHabilidades([...habilidades, trimmed]);
-    }
-    setHabilidadInput("");
-  };
-
-  const removeHabilidad = (h: string) => {
-    setHabilidades(habilidades.filter((x) => x !== h));
-  };
-
-  // ── COLOR DE COMPLETITUD ─────────────────────────────────────────────────
-  const getCompletitudColor = (pct: number) => {
-    if (pct >= 80) return "bg-[#16a34a]"; // verde
-    if (pct >= 50) return "bg-primary";    // azul
-    return "bg-orange";                    // naranja
-  };
-
-  // ── PANTALLA DE CARGA ────────────────────────────────────────────────────
-  if (loading) {
-    return (
-        <div className="min-h-screen flex items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-on-surface-variant font-body-md text-body-md">Cargando perfil...</p>
-          </div>
-        </div>
-    );
-  }
-
-  // ── RENDER PRINCIPAL ─────────────────────────────────────────────────────
   return (
-      <div className="bg-background text-on-background font-body-md min-h-screen flex flex-col pt-16">
+      <div className="min-h-screen bg-[#f8f9fb] flex flex-col">
 
-        {/* NavBar */}
-        <nav className="bg-surface border-b border-outline-variant shadow-sm fixed top-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-xl h-16 max-w-container-max mx-auto left-0 right-0">
-          <div className="flex items-center gap-xl">
-            <span className="font-headline-md text-headline-md font-bold text-primary tracking-tight">EmpleoUni</span>
-            <div className="hidden md:flex gap-md font-body-md text-body-md">
-              <a className="text-on-surface-variant hover:text-primary transition-colors" href="/vacantes">Vacantes</a>
-              <a className="text-primary border-b-2 border-primary pb-1" href="/perfil">Mi Perfil</a>
+        {/* Navbar */}
+        <nav className="h-14 border-b border-gray-200 bg-white flex items-center justify-between px-8 fixed top-0 w-full z-50">
+          <div className="flex items-center gap-6">
+                    <span className="text-base font-bold" style={{ color: "#0d1c32" }}>
+                        Empleo<span style={{ color: "#f97316" }}>Uni</span>
+                    </span>
+            <div className="hidden md:flex gap-5 text-sm font-medium text-gray-500">
+              <a href="/vacantes" className="hover:text-gray-900 transition-colors">Vacantes</a>
+              <a href="/perfil" className="text-gray-900 font-semibold">Mi Perfil</a>
             </div>
           </div>
-          <button
-              onClick={() => { localStorage.removeItem("token"); router.push("/login"); }}
-              className="font-label-md text-label-md text-on-primary bg-primary rounded px-md py-xs hover:bg-on-surface-variant transition-colors shadow-level-1"
-          >
+          <button onClick={handleLogout}
+                  className="text-sm font-semibold text-white px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+                  style={{ backgroundColor: "#0d1c32" }}>
             Cerrar sesión
           </button>
         </nav>
 
-        <main className="flex-1 w-full max-w-container-max mx-auto px-margin-mobile md:px-xl py-lg">
+        <main className="flex-1 w-full max-w-4xl mx-auto px-4 md:px-8 pt-20 pb-12 flex flex-col gap-6">
 
-          {/* Encabezado con completitud */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between mb-lg gap-sm">
-            <h1 className="font-headline-lg text-headline-lg font-bold text-on-surface">Mi Perfil</h1>
-
-            {perfil && (
-                <div className="flex items-center gap-sm bg-surface border border-outline-variant rounded-lg px-md py-sm shadow-level-1">
-                  <span className="font-body-sm text-body-sm text-on-surface-variant">Completitud</span>
-                  <div className="w-32 h-2 bg-surface-container-highest rounded-full overflow-hidden">
-                    <div
-                        className={`h-full rounded-full transition-all duration-500 ${getCompletitudColor(perfil.completitud)}`}
-                        style={{ width: `${perfil.completitud}%` }}
-                    />
-                  </div>
-                  <span className="font-label-md text-label-md font-semibold text-primary">
-                                {perfil.completitud}%
+          {/* Encabezado del perfil */}
+          {!loadingPerfil && perfil && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col md:flex-row items-center md:items-start gap-5">
+                {/* Avatar */}
+                <div className="w-16 h-16 rounded-full bg-gray-900 flex items-center justify-center shrink-0">
+                            <span className="text-2xl font-bold text-white">
+                                {perfil.nombre?.charAt(0).toUpperCase()}
                             </span>
                 </div>
-            )}
-          </div>
-
-          {/* Mensajes de estado */}
-          {error && !perfil && (
-              <div className="mb-lg p-md bg-error-container text-on-error-container rounded-lg font-body-sm text-body-sm">
-                {error}
+                <div className="flex-1 flex flex-col gap-1 text-center md:text-left">
+                  <h1 className="text-xl font-bold text-gray-900">{perfil.nombre}</h1>
+                  <p className="text-sm text-gray-500">{perfil.email}</p>
+                  {(perfil.universidad || perfil.programa) && (
+                      <p className="text-sm text-gray-500">
+                        {perfil.programa}{perfil.programa && perfil.universidad ? " · " : ""}{perfil.universidad}
+                        {perfil.semestre ? ` · Semestre ${perfil.semestre}` : ""}
+                      </p>
+                  )}
+                  {perfil.habilidades && perfil.habilidades.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2 justify-center md:justify-start">
+                        {perfil.habilidades.map((h) => (
+                            <span key={h} className="text-xs font-medium px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                            {h}
+                                        </span>
+                        ))}
+                      </div>
+                  )}
+                </div>
+                {/* Barra de completitud */}
+                <div className="flex flex-col items-center gap-1 shrink-0">
+                  <div className="relative w-16 h-16">
+                    <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
+                      <circle cx="32" cy="32" r="26" fill="none" stroke="#e5e7eb" strokeWidth="6" />
+                      <circle cx="32" cy="32" r="26" fill="none" stroke="#0d1c32" strokeWidth="6"
+                              strokeDasharray={`${2 * Math.PI * 26 * (perfil.completitud / 100)} ${2 * Math.PI * 26}`}
+                              strokeLinecap="round" />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-gray-900">
+                                    {perfil.completitud}%
+                                </span>
+                  </div>
+                  <span className="text-xs text-gray-500">Perfil</span>
+                </div>
               </div>
           )}
 
-          {perfil ? (
-              <div className="flex flex-col gap-lg">
-                {/* Feedback de guardado */}
-                {error && (
-                    <div className="p-sm bg-error-container text-on-error-container rounded-lg font-body-sm text-body-sm flex items-center gap-xs">
-                      <span className="material-symbols-outlined text-[16px]">error</span>
-                      {error}
-                    </div>
-                )}
-                {successMsg && (
-                    <div className="p-sm bg-[#dcfce7] text-[#166534] rounded-lg font-body-sm text-body-sm flex items-center gap-xs">
-                      <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                      {successMsg}
-                    </div>
-                )}
-
-                {/* Tarjeta principal del formulario */}
-                <div className="bg-surface border border-outline-variant rounded-xl shadow-level-1 p-lg flex flex-col gap-lg">
-
-                  {/* Correo (solo lectura) */}
-                  <div>
-                    <label className="font-label-md text-label-md text-on-surface-variant block mb-xs">
-                      Correo electrónico
-                    </label>
-                    <div className="bg-surface-container rounded px-sm py-xs font-body-md text-body-md text-on-surface-variant border border-outline-variant">
-                      {perfil.email}
-                    </div>
-                  </div>
-
-                  {/* Nombre */}
-                  <div>
-                    <label htmlFor="nombre" className="font-label-md text-label-md text-on-surface-variant block mb-xs">
-                      Nombre completo
-                    </label>
-                    <input
-                        id="nombre"
-                        type="text"
-                        value={nombre}
-                        onChange={(e) => setNombre(e.target.value)}
-                        placeholder="Tu nombre completo"
-                        className="w-full border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                  </div>
-
-                  {/* Bio */}
-                  <div>
-                    <label htmlFor="bio" className="font-label-md text-label-md text-on-surface-variant block mb-xs">
-                      Sobre mí
-                    </label>
-                    <textarea
-                        id="bio"
-                        value={bio}
-                        onChange={(e) => setBio(e.target.value)}
-                        placeholder="Cuéntanos sobre ti, tus intereses y objetivos profesionales..."
-                        rows={4}
-                        className="w-full border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-                    />
-                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-xs">
-                      +15% de completitud al agregar tu bio
-                    </p>
-                  </div>
-
-                  {/* Universidad y Programa */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-                    <div>
-                      <label htmlFor="universidad" className="font-label-md text-label-md text-on-surface-variant block mb-xs">
-                        Universidad
-                      </label>
-                      <input
-                          id="universidad"
-                          type="text"
-                          value={universidad}
-                          onChange={(e) => setUniversidad(e.target.value)}
-                          placeholder="Ej: Corporación Universitaria Alexander Von Humboldt"
-                          className="w-full border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="programa" className="font-label-md text-label-md text-on-surface-variant block mb-xs">
-                        Programa académico
-                      </label>
-                      <input
-                          id="programa"
-                          type="text"
-                          value={programa}
-                          onChange={(e) => setPrograma(e.target.value)}
-                          placeholder="Ej: Ingeniería de Software"
-                          className="w-full border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Semestre */}
-                  <div>
-                    <label htmlFor="semestre" className="font-label-md text-label-md text-on-surface-variant block mb-xs">
-                      Semestre actual
-                    </label>
-                    <select
-                        id="semestre"
-                        value={semestre}
-                        onChange={(e) => setSemestre(e.target.value)}
-                        className="w-36 border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="">-- Selecciona</option>
-                      {Array.from({ length: 12 }, (_, i) => (
-                          <option key={i + 1} value={i + 1}>
-                            {i + 1}° semestre
-                          </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Habilidades (tag input) */}
-                  <div>
-                    <label className="font-label-md text-label-md text-on-surface-variant block mb-xs">
-                      Habilidades técnicas
-                    </label>
-
-                    {/* Tags existentes */}
-                    {habilidades.length > 0 && (
-                        <div className="flex flex-wrap gap-xs mb-sm" role="list" aria-label="Habilidades agregadas">
-                          {habilidades.map((h) => (
-                              <span
-                                  key={h}
-                                  role="listitem"
-                                  className="flex items-center gap-[2px] bg-primary-container text-on-primary-container font-label-sm text-label-sm px-2 py-1 rounded-full"
-                              >
-                                                {h}
-                                <button
-                                    type="button"
-                                    onClick={() => removeHabilidad(h)}
-                                    aria-label={`Eliminar habilidad ${h}`}
-                                    className="ml-[2px] hover:text-error transition-colors"
-                                >
-                                                    <span className="material-symbols-outlined text-[14px]">close</span>
-                                                </button>
-                                            </span>
-                          ))}
-                        </div>
-                    )}
-
-                    {/* Input para agregar */}
-                    <div className="flex gap-xs">
-                      <input
-                          type="text"
-                          value={habilidadInput}
-                          onChange={(e) => setHabilidadInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === ",") {
-                              e.preventDefault();
-                              addHabilidad(habilidadInput);
-                            }
-                          }}
-                          placeholder="Ej: React, TypeScript, Docker..."
-                          aria-label="Agregar habilidad"
-                          className="flex-1 border border-outline-variant rounded px-sm py-xs font-body-md text-body-md text-on-surface bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                      <button
-                          type="button"
-                          onClick={() => addHabilidad(habilidadInput)}
-                          className="px-sm py-xs bg-surface border border-outline-variant text-on-surface font-label-md text-label-md rounded hover:bg-surface-container-low transition-colors"
-                      >
-                        Agregar
-                      </button>
-                    </div>
-                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-xs">
-                      Presiona Enter o coma para agregar · 3+ habilidades suman +20% de completitud
-                    </p>
-                  </div>
-
-                  {/* Botón guardar */}
-                  <div className="flex justify-end pt-sm border-t border-outline-variant">
-                    <button
-                        type="button"
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="px-lg py-sm bg-primary text-on-primary font-label-lg text-label-lg rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-xs"
-                    >
-                      {saving ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-on-primary border-t-transparent rounded-full animate-spin" />
-                            Guardando...
-                          </>
-                      ) : (
-                          <>
-                            <span className="material-symbols-outlined text-[18px]">save</span>
-                            Guardar cambios
-                          </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Tarjeta de tips de completitud */}
-                <div className="bg-surface border border-outline-variant rounded-xl shadow-level-1 p-md">
-                  <h2 className="font-title-md text-title-md font-semibold text-on-surface mb-sm flex items-center gap-xs">
-                    <span className="material-symbols-outlined text-primary text-[18px]">tips_and_updates</span>
-                    Mejora tu perfil
-                  </h2>
-                  <ul className="flex flex-col gap-xs font-body-sm text-body-sm text-on-surface-variant">
-                    <li className={`flex items-center gap-xs ${bio ? "line-through opacity-50" : ""}`}>
-                      <span className="material-symbols-outlined text-[14px]">{bio ? "check_circle" : "radio_button_unchecked"}</span>
-                      Agrega una descripción sobre ti (+15%)
-                    </li>
-                    <li className={`flex items-center gap-xs ${universidad ? "line-through opacity-50" : ""}`}>
-                      <span className="material-symbols-outlined text-[14px]">{universidad ? "check_circle" : "radio_button_unchecked"}</span>
-                      Indica tu universidad (+10%)
-                    </li>
-                    <li className={`flex items-center gap-xs ${programa ? "line-through opacity-50" : ""}`}>
-                      <span className="material-symbols-outlined text-[14px]">{programa ? "check_circle" : "radio_button_unchecked"}</span>
-                      Agrega tu programa académico (+10%)
-                    </li>
-                    <li className={`flex items-center gap-xs ${semestre ? "line-through opacity-50" : ""}`}>
-                      <span className="material-symbols-outlined text-[14px]">{semestre ? "check_circle" : "radio_button_unchecked"}</span>
-                      Indica tu semestre actual (+5%)
-                    </li>
-                    <li className={`flex items-center gap-xs ${habilidades.length >= 3 ? "line-through opacity-50" : ""}`}>
-                      <span className="material-symbols-outlined text-[14px]">{habilidades.length >= 3 ? "check_circle" : "radio_button_unchecked"}</span>
-                      Agrega al menos 3 habilidades (+20%)
-                    </li>
-                  </ul>
-                </div>
-              </div>
-          ) : (
-              /* Perfil no encontrado */
-              <div className="bg-surface border border-outline-variant rounded-xl p-lg text-center flex flex-col items-center gap-md">
-                <span className="material-symbols-outlined text-on-surface-variant text-[48px]">person_off</span>
-                <p className="font-body-md text-body-md text-on-surface-variant">
-                  {error ?? "No se encontró el perfil."}
-                </p>
+          {/* Tabs */}
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+            {([
+              { id: "postulaciones", label: "Mis postulaciones", icon: "work_history" },
+              { id: "perfil",        label: "Datos académicos",  icon: "school"       },
+            ] as const).map(({ id, label, icon }) => (
                 <button
-                    onClick={() => { localStorage.removeItem("token"); router.push("/login"); }}
-                    className="px-md py-sm bg-primary text-on-primary font-label-md text-label-md rounded hover:opacity-90 transition-opacity"
+                    key={id} onClick={() => setTab(id)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                        tab === id
+                            ? "bg-white text-gray-900 shadow-sm"
+                            : "text-gray-500 hover:text-gray-700"
+                    }`}
                 >
-                  Volver al inicio de sesión
+                  <span className="material-symbols-outlined text-[18px]">{icon}</span>
+                  {label}
                 </button>
-              </div>
-          )}\r\n\r\n          {/* ── MIS POSTULACIONES ─────────────────────────────────────────── */}
-          <div className="bg-surface border border-outline-variant rounded-xl shadow-level-1 p-md">
-            <h2 className="font-title-md text-title-md font-semibold text-on-surface mb-sm flex items-center gap-xs">
-              <span className="material-symbols-outlined text-primary text-[18px]">work_history</span>
-              Mis postulaciones
-            </h2>
-
-            {postulacionesLoading ? (
-                <div className="flex justify-center py-6">
-                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                </div>
-            ) : postulaciones.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 py-8 text-on-surface-variant">
-                  <span className="material-symbols-outlined text-[36px]">inbox</span>
-                  <p className="font-body-sm text-body-sm">Aún no te has postulado a ninguna vacante.</p>
-                  <a href="/vacantes" className="text-sm font-semibold text-primary hover:underline">Ver vacantes disponibles</a>
-                </div>
-            ) : (
-                <div className="flex flex-col gap-sm">
-                  {postulaciones.map((p) => (
-                      <div key={p.id} className="border border-outline-variant rounded-lg p-sm flex flex-col md:flex-row md:items-center md:justify-between gap-xs bg-surface-container-low">
-                        <div className="flex flex-col gap-1">
-                      <span className="font-label-sm text-label-sm text-on-surface-variant">
-                        ID vacante: <span className="font-mono text-xs">{p.vacanteId}</span>
-                      </span>
-                          <span className="font-body-sm text-body-sm text-on-surface-variant">
-                        Disponibilidad: {p.disponibilidad}
-                      </span>
-                          <span className="font-body-sm text-body-sm text-on-surface-variant">
-                        Expectativa salarial: {p.expectativaSalarial}
-                      </span>
-                        </div>
-                        <div className="flex items-center gap-sm">
-                      <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
-                          p.estado === "aceptada"   ? "bg-[#e8f5e9] text-[#1b5e20]" :
-                              p.estado === "rechazada"  ? "bg-[#ffdad6] text-[#93000a]" :
-                                  p.estado === "entrevista" ? "bg-[#e0e7ff] text-[#3730a3]" :
-                                      p.estado === "vista"      ? "bg-[#fef9c3] text-[#854d0e]" :
-                                          "bg-surface-variant text-on-surface-variant"
-                      }`}>
-                        {p.estado === "enviada"    ? "Enviada" :
-                            p.estado === "vista"      ? "Vista por la empresa" :
-                                p.estado === "entrevista" ? "En proceso" :
-                                    p.estado === "aceptada"   ? "Aceptada ✓" :
-                                        p.estado === "rechazada"  ? "No seleccionado" : p.estado}
-                      </span>
-                          <span className="font-label-sm text-label-sm text-on-surface-variant">
-                        {new Date(p.fecha).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" })}
-                      </span>
-                        </div>
-                      </div>
-                  ))}
-                </div>
-            )}
+            ))}
           </div>
 
+          {/* ── TAB: POSTULACIONES ────────────────────────────────────────────── */}
+          {tab === "postulaciones" && (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold text-gray-800">
+                    Postulaciones realizadas
+                    {!loadingPostul && (
+                        <span className="ml-2 text-sm font-normal text-gray-400">
+                                        ({postulaciones.length})
+                                    </span>
+                    )}
+                  </h2>
+                  <button onClick={() => router.push("/vacantes")}
+                          className="text-sm font-semibold flex items-center gap-1 text-orange-500 hover:text-orange-600 transition-colors">
+                    <span className="material-symbols-outlined text-[16px]">search</span>
+                    Buscar vacantes
+                  </button>
+                </div>
+
+                {loadingPostul ? (
+                    <div className="flex justify-center py-16">
+                      <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                ) : postulaciones.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-dashed border-gray-300 py-16 flex flex-col items-center gap-3">
+                      <span className="material-symbols-outlined text-[48px] text-gray-300">work_outline</span>
+                      <p className="text-gray-500 text-sm">Aún no te has postulado a ninguna vacante.</p>
+                      <button onClick={() => router.push("/vacantes")}
+                              className="mt-2 text-sm font-semibold text-white px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity"
+                              style={{ backgroundColor: "#0d1c32" }}>
+                        Ver vacantes disponibles
+                      </button>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                      {postulaciones.map((p) => {
+                        const cfg = estadoCfg(p.estado);
+                        return (
+                            <div key={p.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                              {/* Línea de color según estado */}
+                              <div className={`h-1 w-full ${
+                                  p.estado === "aceptada"   ? "bg-emerald-400" :
+                                      p.estado === "rechazada"  ? "bg-red-400"     :
+                                          p.estado === "entrevista" ? "bg-blue-400"    :
+                                              p.estado === "vista"      ? "bg-amber-400"   :
+                                                  "bg-gray-200"
+                              }`} />
+
+                              <div className="p-5 flex flex-col gap-4">
+                                {/* Header: empresa + badge estado */}
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
+                                                            <span className="font-bold text-gray-700">
+                                                                {(p.vacanteEmpresa ?? "?").charAt(0).toUpperCase()}
+                                                            </span>
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold text-gray-900 text-sm">
+                                        {p.vacanteTitle ?? "Cargando vacante..."}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        {p.vacanteEmpresa ?? ""}
+                                        {p.vacanteCiudad ? ` · ${p.vacanteCiudad}` : ""}
+                                        {p.vacanteModalidad ? ` · ${p.vacanteModalidad}` : ""}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Badge de estado */}
+                                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 ${cfg.bg} ${cfg.text}`}>
+                                    <span className="material-symbols-outlined text-[14px]">{cfg.icon}</span>
+                                    {cfg.label}
+                                  </div>
+                                </div>
+
+                                {/* Carta de motivación */}
+                                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                                  <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Carta de motivación</p>
+                                  <p className="text-sm text-gray-700 leading-relaxed line-clamp-3">
+                                    {p.cartaMotivacion?.replace(/\\r\\n|\\n|\\r/g, " ").trim() || "—"}
+                                  </p>
+                                </div>
+
+                                {/* Detalles: salario y disponibilidad */}
+                                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 border-t border-gray-100 pt-3">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-[16px] text-gray-400">payments</span>
+                                    <span className="text-xs text-gray-500">Expectativa:</span>
+                                    <span className="text-xs font-semibold text-gray-800">{p.expectativaSalarial || "—"}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-[16px] text-gray-400">event_available</span>
+                                    <span className="text-xs text-gray-500">Disponible:</span>
+                                    <span className="text-xs font-semibold text-gray-800">{p.disponibilidad || "—"}</span>
+                                  </div>
+                                  <div className="ml-auto flex items-center gap-1 text-xs text-gray-400">
+                                    <span className="material-symbols-outlined text-[14px]">schedule</span>
+                                    {new Date(p.fecha).toLocaleDateString("es-CO", {
+                                      day: "2-digit", month: "short", year: "numeric",
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                        );
+                      })}
+                    </div>
+                )}
+              </div>
+          )}
+
+          {/* ── TAB: DATOS ACADÉMICOS ─────────────────────────────────────────── */}
+          {tab === "perfil" && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+                {loadingPerfil ? (
+                    <div className="flex justify-center py-10">
+                      <div className="w-7 h-7 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                ) : perfil ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {[
+                        { icon: "person",       label: "Nombre",       value: perfil.nombre      },
+                        { icon: "mail",         label: "Correo",       value: perfil.email       },
+                        { icon: "school",       label: "Universidad",  value: perfil.universidad },
+                        { icon: "menu_book",    label: "Programa",     value: perfil.programa    },
+                        { icon: "calendar_month", label: "Semestre",   value: perfil.semestre ? `Semestre ${perfil.semestre}` : null },
+                      ].filter((f) => f.value).map(({ icon, label, value }) => (
+                          <div key={label} className="flex items-start gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <span className="material-symbols-outlined text-[20px] text-gray-400 mt-0.5">{icon}</span>
+                            <div>
+                              <p className="text-xs text-gray-500 font-medium">{label}</p>
+                              <p className="text-sm font-semibold text-gray-900 mt-0.5">{value}</p>
+                            </div>
+                          </div>
+                      ))}
+                    </div>
+                ) : (
+                    <p className="text-sm text-gray-500 text-center py-8">No se pudo cargar el perfil.</p>
+                )}
+              </div>
+          )}
         </main>
 
-        {/* Footer */}
-        <footer className="bg-surface-container-highest w-full py-lg px-margin-mobile md:px-xl flex flex-col md:flex-row justify-between items-center gap-md mt-auto">
-          <span className="font-headline-md text-headline-md font-bold text-primary tracking-tight">EmpleoUni</span>
-          <p className="font-body-sm text-body-sm text-on-surface text-center md:text-left">
-            © 2024 EmpleoUni - Talento Universitario Colombiano
-          </p>
-          <div className="flex gap-md font-body-sm text-body-sm">
-            <a className="text-on-surface-variant hover:underline transition-all opacity-80 hover:opacity-100" href="#">Contacto</a>
-            <a className="text-on-surface-variant hover:underline transition-all opacity-80 hover:opacity-100" href="#">Términos y Condiciones</a>
-            <a className="text-on-surface-variant hover:underline transition-all opacity-80 hover:opacity-100" href="#">Privacidad</a>
+        <footer className="border-t border-gray-200 bg-white py-5 px-8 flex flex-col md:flex-row justify-between items-center gap-3">
+                <span className="text-sm font-bold" style={{ color: "#0d1c32" }}>
+                    Empleo<span style={{ color: "#f97316" }}>Uni</span>
+                </span>
+          <p className="text-xs text-gray-400">© 2024 EmpleoUni - Talento Universitario Colombiano</p>
+          <div className="flex gap-4 text-xs text-gray-400">
+            <a href="#" className="hover:text-gray-700">Contacto</a>
+            <a href="#" className="hover:text-gray-700">Términos</a>
+            <a href="#" className="hover:text-gray-700">Privacidad</a>
           </div>
         </footer>
       </div>

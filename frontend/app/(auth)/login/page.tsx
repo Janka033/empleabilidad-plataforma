@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { API_URLS } from "../../lib/api";
+import { saveSession } from "../../lib/auth";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -32,16 +33,14 @@ export default function LoginPage() {
                 return;
             }
 
-            // Guardar token, rol y datos del usuario para uso en toda la app
-            localStorage.setItem("token", data.token);
-            localStorage.setItem("role", data.role);
-            localStorage.setItem("user", JSON.stringify(data.user));
+            // Guarda en localStorage + cookie (para el middleware edge)
+            saveSession(data.token, data.role, data.user);
 
-            // Redirigir según rol
+            // ── Redirección según rol ─────────────────────────────────────
             if (data.role === "empresa") {
-                router.push("/vacantes"); // empresa ve sus vacantes y puede crear
+                router.push("/empresa/dashboard");
             } else {
-                router.push("/vacantes"); // estudiante ve vacantes disponibles
+                router.push("/vacantes");
             }
         } catch {
             setError("Error de conexión. Intenta de nuevo.");
@@ -52,10 +51,11 @@ export default function LoginPage() {
 
     return (
         <div style={{ display: "flex", minHeight: "100vh" }}>
-
             {/* Panel izquierdo — navy */}
-            <div style={{ width: "50%", backgroundColor: "#0d1c32", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "48px", position: "relative", overflow: "hidden" }}
-                 className="hidden lg:flex">
+            <div
+                style={{ width: "50%", backgroundColor: "#0d1c32", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "48px", position: "relative", overflow: "hidden" }}
+                className="hidden lg:flex"
+            >
                 <div style={{ position: "absolute", top: 0, right: 0, width: "384px", height: "384px", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: "9999px", transform: "translate(50%, -50%)" }} />
                 <div style={{ position: "absolute", bottom: 0, left: 0, width: "256px", height: "256px", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: "9999px", transform: "translate(-50%, 50%)" }} />
                 <div style={{ position: "absolute", top: "50%", right: "32px", width: "128px", height: "128px", backgroundColor: "rgba(249,115,22,0.1)", borderRadius: "9999px", transform: "translateY(-50%)" }} />
@@ -87,9 +87,9 @@ export default function LoginPage() {
                     </div>
                 </div>
 
-                <div style={{ position: "relative", zIndex: 10 }}>
-                    <p style={{ color: "#44474d", fontSize: "12px" }}>© 2025 EmpleoUni — CUE Armenia, Quindío</p>
-                </div>
+                <p style={{ position: "relative", zIndex: 10, color: "#44474d", fontSize: "12px" }}>
+                    © 2025 EmpleoUni — CUE Armenia, Quindío
+                </p>
             </div>
 
             {/* Panel derecho — formulario */}
@@ -107,9 +107,12 @@ export default function LoginPage() {
                         </h1>
                         <p style={{ color: "#44474d", fontSize: "14px", marginTop: "4px" }}>
                             ¿No tienes cuenta?{" "}
-                            <Link href="/register" style={{ color: "#0d1c32", fontWeight: "600", textDecoration: "none" }}
-                                  onMouseOver={e => (e.currentTarget.style.color = "#f97316")}
-                                  onMouseOut={e => (e.currentTarget.style.color = "#0d1c32")}>
+                            <Link
+                                href="/register"
+                                style={{ color: "#0d1c32", fontWeight: "600", textDecoration: "none" }}
+                                onMouseOver={(e) => (e.currentTarget.style.color = "#f97316")}
+                                onMouseOut={(e)  => (e.currentTarget.style.color = "#0d1c32")}
+                            >
                                 Regístrate gratis
                             </Link>
                         </p>
@@ -120,9 +123,11 @@ export default function LoginPage() {
                             <label htmlFor="email" style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#1b1b1d", marginBottom: "6px" }}>
                                 Correo electrónico
                             </label>
-                            <input id="email" name="email" type="email" autoComplete="email" required
-                                   value={formData.email} onChange={handleChange} placeholder="tu@correo.com"
-                                   style={{ width: "100%", padding: "12px 16px", backgroundColor: "white", border: "1px solid #c5c6cd", borderRadius: "8px", fontSize: "14px", color: "#1b1b1d", boxSizing: "border-box" }} />
+                            <input
+                                id="email" name="email" type="email" autoComplete="email" required
+                                value={formData.email} onChange={handleChange} placeholder="tu@correo.com"
+                                style={{ width: "100%", padding: "12px 16px", backgroundColor: "white", border: "1px solid #c5c6cd", borderRadius: "8px", fontSize: "14px", color: "#1b1b1d", boxSizing: "border-box" }}
+                            />
                         </div>
 
                         <div>
@@ -134,9 +139,11 @@ export default function LoginPage() {
                                     ¿Olvidaste tu contraseña?
                                 </Link>
                             </div>
-                            <input id="password" name="password" type="password" autoComplete="current-password" required
-                                   value={formData.password} onChange={handleChange} placeholder="••••••••"
-                                   style={{ width: "100%", padding: "12px 16px", backgroundColor: "white", border: "1px solid #c5c6cd", borderRadius: "8px", fontSize: "14px", color: "#1b1b1d", boxSizing: "border-box" }} />
+                            <input
+                                id="password" name="password" type="password" autoComplete="current-password" required
+                                value={formData.password} onChange={handleChange} placeholder="••••••••"
+                                style={{ width: "100%", padding: "12px 16px", backgroundColor: "white", border: "1px solid #c5c6cd", borderRadius: "8px", fontSize: "14px", color: "#1b1b1d", boxSizing: "border-box" }}
+                            />
                         </div>
 
                         {error && (
@@ -145,8 +152,10 @@ export default function LoginPage() {
                             </div>
                         )}
 
-                        <button type="submit" disabled={loading}
-                                style={{ width: "100%", padding: "12px 16px", backgroundColor: loading ? "#44474d" : "#0d1c32", color: "white", fontWeight: "600", fontSize: "14px", borderRadius: "8px", border: "none", cursor: loading ? "not-allowed" : "pointer" }}>
+                        <button
+                            type="submit" disabled={loading}
+                            style={{ width: "100%", padding: "12px 16px", backgroundColor: loading ? "#44474d" : "#0d1c32", color: "white", fontWeight: "600", fontSize: "14px", borderRadius: "8px", border: "none", cursor: loading ? "not-allowed" : "pointer" }}
+                        >
                             {loading ? "Ingresando..." : "Ingresar"}
                         </button>
 
@@ -156,8 +165,10 @@ export default function LoginPage() {
                             <div style={{ flex: 1, height: "1px", backgroundColor: "#c5c6cd" }} />
                         </div>
 
-                        <button type="button"
-                                style={{ width: "100%", padding: "12px 16px", backgroundColor: "white", color: "#1b1b1d", fontWeight: "500", fontSize: "14px", borderRadius: "8px", border: "1px solid #c5c6cd", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "12px" }}>
+                        <button
+                            type="button"
+                            style={{ width: "100%", padding: "12px 16px", backgroundColor: "white", color: "#1b1b1d", fontWeight: "500", fontSize: "14px", borderRadius: "8px", border: "1px solid #c5c6cd", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "12px" }}
+                        >
                             <svg viewBox="0 0 24 24" style={{ width: "16px", height: "16px" }} aria-hidden>
                                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                                 <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>

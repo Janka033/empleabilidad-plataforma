@@ -5,56 +5,54 @@ import { useRouter } from "next/navigation";
 import { API_URLS, authHeaders } from "../../../lib/api";
 
 interface Vacante {
-    id: string;
-    titulo: string;
-    empresa: string;
-    descripcion: string;
-    modalidad: string;
-    tipo: string;
-    ciudad: string;
-    area: string;
-    salario?: string;
-    activa: boolean;
+    id: string; titulo: string; empresa: string;
+    modalidad: string; tipo: string; ciudad: string;
+    area: string; salario?: string; activa: boolean;
 }
-
 interface Postulado {
-    id: string;
-    vacanteId: string;
-    nombre: string;
-    email: string;
-    universidad?: string;
-    programa?: string;
-    semestre?: number;
-    habilidades?: string[];
-    completitud: number;
-    cartaMotivacion: string;
-    expectativaSalarial: string;
-    disponibilidad: string;
-    estado: string;
-    fecha: string;
+    id: string; vacanteId: string;
+    nombre: string; email: string;
+    universidad?: string; programa?: string; semestre?: number;
+    habilidades?: string[]; completitud: number;
+    cartaMotivacion: string; expectativaSalarial: string;
+    disponibilidad: string; estado: string; fecha: string;
 }
 
 const MODALIDADES = ["Presencial", "Remoto", "Híbrido"];
-const TIPOS = ["Práctica", "Tiempo completo", "Medio tiempo"];
-const EMPTY_FORM = { titulo: "", empresa: "", descripcion: "", modalidad: "", tipo: "", ciudad: "", area: "", salario: "", requisitos: "" };
+const TIPOS       = ["Práctica", "Tiempo completo", "Medio tiempo"];
+const EMPTY_FORM  = { titulo: "", empresa: "", descripcion: "", modalidad: "", tipo: "", ciudad: "", area: "", salario: "", requisitos: "" };
+
+const ESTADOS = [
+    { value: "enviada",    label: "Enviada",    style: "bg-gray-100 text-gray-600"       },
+    { value: "vista",      label: "Vista",      style: "bg-amber-50 text-amber-700"      },
+    { value: "entrevista", label: "En proceso", style: "bg-blue-50 text-blue-700"        },
+    { value: "aceptada",   label: "Aceptada",   style: "bg-emerald-50 text-emerald-700"  },
+    { value: "rechazada",  label: "Rechazada",  style: "bg-red-50 text-red-600"          },
+];
+const ESTADO_ICON: Record<string, string> = {
+    enviada: "schedule", vista: "visibility", entrevista: "groups", aceptada: "check_circle", rechazada: "cancel",
+};
+
+function estadoStyle(e: string) {
+    return ESTADOS.find((s) => s.value === e) ?? ESTADOS[0];
+}
 
 export default function EmpresaDashboard() {
     const router = useRouter();
-    const [vacantes, setVacantes] = useState<Vacante[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [showForm, setShowForm] = useState(false);
-    const [form, setForm] = useState(EMPTY_FORM);
-    const [formLoading, setFormLoading] = useState(false);
-    const [formError, setFormError] = useState("");
-    const [successMsg, setSuccessMsg] = useState("");
-    const [empresaNombre, setEmpresaNombre] = useState("");
-
-    // Postulados
+    const [vacantes,            setVacantes]            = useState<Vacante[]>([]);
+    const [loading,             setLoading]             = useState(true);
+    const [showForm,            setShowForm]            = useState(false);
+    const [form,                setForm]                = useState(EMPTY_FORM);
+    const [formLoading,         setFormLoading]         = useState(false);
+    const [formError,           setFormError]           = useState("");
+    const [successMsg,          setSuccessMsg]          = useState("");
+    const [empresaNombre,       setEmpresaNombre]       = useState("");
     const [vacanteSeleccionada, setVacanteSeleccionada] = useState<Vacante | null>(null);
-    const [postulados, setPostulados] = useState<Postulado[]>([]);
-    const [postuladosLoading, setPostuladosLoading] = useState(false);
+    const [postulados,          setPostulados]          = useState<Postulado[]>([]);
+    const [postuladosLoading,   setPostuladosLoading]   = useState(false);
+    const [updatingEstado,      setUpdatingEstado]      = useState<Record<string, boolean>>({});
 
-    const fetchMisVacantes = useCallback(async () => {
+    const fetchVacantes = useCallback(async () => {
         const token = localStorage.getItem("token");
         if (!token) { router.push("/login"); return; }
         try {
@@ -62,7 +60,7 @@ export default function EmpresaDashboard() {
             if (res.status === 401) { router.push("/login"); return; }
             const data = await res.json();
             setVacantes(data.vacantes || []);
-        } catch { /* silenciar */ } finally { setLoading(false); }
+        } catch {} finally { setLoading(false); }
     }, [router]);
 
     useEffect(() => {
@@ -72,28 +70,43 @@ export default function EmpresaDashboard() {
             const payload = JSON.parse(atob(token.split(".")[1]));
             if (payload.rol !== "empresa") { router.push("/vacantes"); return; }
         } catch { router.push("/login"); return; }
-        const user = localStorage.getItem("user");
-        if (user) { try { setEmpresaNombre(JSON.parse(user).nombre || ""); } catch { } }
-        fetchMisVacantes();
-    }, [router, fetchMisVacantes]);
+        try {
+            const user = JSON.parse(localStorage.getItem("user") || "{}");
+            setEmpresaNombre(user.nombre || "");
+        } catch {}
+        fetchVacantes();
+    }, [router, fetchVacantes]);
 
     const fetchPostulados = async (vacante: Vacante) => {
-        setVacanteSeleccionada(vacante);
-        setPostulados([]);
-        setPostuladosLoading(true);
+        setVacanteSeleccionada(vacante); setPostulados([]); setPostuladosLoading(true);
         const token = localStorage.getItem("token");
         if (!token) return;
         try {
-            const res = await fetch(`${API_URLS.perfiles}/postulaciones/vacante/${vacante.id}`, {
-                headers: authHeaders(token),
-            });
+            const res = await fetch(`${API_URLS.perfiles}/postulaciones/vacante/${vacante.id}`, { headers: authHeaders(token) });
             if (res.ok) setPostulados(await res.json());
-        } catch { } finally { setPostuladosLoading(false); }
+        } catch {} finally { setPostuladosLoading(false); }
+    };
+
+    const handleCambiarEstado = async (postulacionId: string, nuevoEstado: string) => {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        setUpdatingEstado((prev) => ({ ...prev, [postulacionId]: true }));
+        try {
+            const res = await fetch(`${API_URLS.perfiles}/postulaciones/${postulacionId}/estado`, {
+                method: "PATCH",
+                headers: authHeaders(token),
+                body: JSON.stringify({ estado: nuevoEstado }),
+            });
+            if (res.ok) {
+                setPostulados((prev) => prev.map((p) => p.id === postulacionId ? { ...p, estado: nuevoEstado } : p));
+            }
+        } catch {} finally {
+            setUpdatingEstado((prev) => ({ ...prev, [postulacionId]: false }));
+        }
     };
 
     const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        setForm({ ...form, [e.target.name]: e.target.value });
-        setFormError("");
+        setForm({ ...form, [e.target.name]: e.target.value }); setFormError("");
     };
 
     const handleCrearVacante = async (e: React.FormEvent) => {
@@ -104,252 +117,350 @@ export default function EmpresaDashboard() {
         }
         setFormLoading(true);
         const token = localStorage.getItem("token");
-        if (!token) { router.push("/login"); return; }
+        if (!token) return;
         try {
             const res = await fetch(`${API_URLS.vacantes}/vacantes`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", ...authHeaders(token) },
+                headers: authHeaders(token),
                 body: JSON.stringify({
                     titulo, empresa, descripcion, modalidad, tipo, ciudad, area,
                     salario: form.salario || undefined,
-                    requisitos: form.requisitos ? form.requisitos.split(",").map(r => r.trim()).filter(Boolean) : [],
+                    requisitos: form.requisitos ? form.requisitos.split(",").map((r) => r.trim()).filter(Boolean) : [],
                 }),
             });
             const data = await res.json();
             if (!res.ok) { setFormError(data.message || "Error al crear la vacante."); return; }
-            setSuccessMsg(`Vacante "${data.titulo}" publicada exitosamente.`);
+            setSuccessMsg(`Vacante "${data.titulo}" publicada.`);
             setForm({ ...EMPTY_FORM, empresa: empresaNombre });
             setShowForm(false);
-            fetchMisVacantes();
-            setTimeout(() => setSuccessMsg(""), 5000);
-        } catch { setFormError("Error de conexión. Intenta de nuevo."); }
+            fetchVacantes();
+            setTimeout(() => setSuccessMsg(""), 4000);
+        } catch { setFormError("Error de conexión."); }
         finally { setFormLoading(false); }
     };
 
-    const estadoLabel = (e: string) => ({ enviada: "Enviada", vista: "Vista", entrevista: "En proceso", aceptada: "Aceptada", rechazada: "Rechazado" }[e] ?? e);
-    const estadoColor = (e: string) => ({
-        aceptada: "bg-[#e8f5e9] text-[#1b5e20]",
-        rechazada: "bg-[#ffdad6] text-[#93000a]",
-        entrevista: "bg-[#e0e7ff] text-[#3730a3]",
-        vista: "bg-[#fef9c3] text-[#854d0e]",
-    }[e] ?? "bg-surface-variant text-on-surface-variant");
-
     return (
-        <div className="bg-background text-on-background min-h-screen flex flex-col pt-16">
-            {/* NavBar */}
-            <nav className="bg-surface border-b border-outline-variant shadow-sm fixed top-0 w-full z-50 flex justify-between items-center px-6 md:px-12 h-16">
+        <div className="min-h-screen bg-[#f8f9fb] flex flex-col">
+
+            {/* Navbar empresa */}
+            <nav className="h-14 border-b border-gray-200 bg-white flex items-center justify-between px-8 fixed top-0 w-full z-50">
                 <div className="flex items-center gap-3">
-                    <span className="text-xl font-bold" style={{ color: "#0d1c32" }}>
+                    <span className="text-base font-bold" style={{ color: "#0d1c32" }}>
                         Empleo<span style={{ color: "#f97316" }}>Uni</span>
                     </span>
-                    <span className="hidden md:block text-sm text-on-surface-variant border-l border-outline-variant pl-3">Panel de Empresa</span>
+                    <span className="hidden md:flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700">
+                        <span className="material-symbols-outlined text-[14px]">business</span>
+                        {empresaNombre || "Panel de Empresa"}
+                    </span>
                 </div>
-                <button onClick={() => { localStorage.clear(); router.push("/login"); }}
-                        className="text-sm font-semibold bg-primary text-white px-4 py-2 rounded-lg hover:opacity-90 transition-opacity">
+                <button
+                    onClick={() => { localStorage.clear(); document.cookie = "token=; path=/; max-age=0"; router.push("/login"); }}
+                    className="text-sm font-semibold text-white px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+                    style={{ backgroundColor: "#0d1c32" }}
+                >
                     Cerrar sesión
                 </button>
             </nav>
 
-            <main className="flex-1 w-full max-w-6xl mx-auto px-6 md:px-12 py-8 flex flex-col gap-6">
+            <main className="flex-1 w-full max-w-6xl mx-auto px-4 md:px-8 pt-20 pb-12 flex flex-col gap-6">
 
                 {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div>
-                        <h1 className="text-2xl font-bold text-on-surface">Mis Vacantes</h1>
-                        <p className="text-sm text-on-surface-variant mt-1">Gestiona tus vacantes y revisa los candidatos</p>
+                        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Mis Vacantes</h1>
+                        <p className="text-sm text-gray-500 mt-0.5">Gestiona tus vacantes y revisa los candidatos</p>
                     </div>
-                    <button onClick={() => { setForm({ ...EMPTY_FORM, empresa: empresaNombre }); setFormError(""); setShowForm(true); setVacanteSeleccionada(null); }}
-                            className="flex items-center gap-2 bg-primary text-white font-semibold text-sm px-5 py-2.5 rounded-lg hover:opacity-90 transition-opacity shadow-sm">
+                    <button
+                        onClick={() => { setForm({ ...EMPTY_FORM, empresa: empresaNombre }); setFormError(""); setShowForm(true); setVacanteSeleccionada(null); }}
+                        className="flex items-center gap-2 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity shadow-sm"
+                        style={{ backgroundColor: "#0d1c32" }}
+                    >
                         <span className="material-symbols-outlined text-[18px]">add</span>
                         Nueva vacante
                     </button>
                 </div>
 
                 {successMsg && (
-                    <div className="bg-[#e8f5e9] border border-[#a5d6a7] text-[#1b5e20] rounded-lg px-4 py-3 text-sm flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[18px]">check_circle</span>{successMsg}
+                    <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-4 py-3 text-sm flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px] text-emerald-600">check_circle</span>
+                        {successMsg}
                     </div>
                 )}
 
-                {/* Formulario crear vacante */}
+                {/* Formulario */}
                 {showForm && (
-                    <div className="bg-surface border border-outline-variant rounded-xl shadow-sm p-6 flex flex-col gap-5">
+                    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col gap-5">
                         <div className="flex items-center justify-between">
-                            <h2 className="text-lg font-bold text-on-surface">Crear nueva vacante</h2>
-                            <button onClick={() => setShowForm(false)} className="text-on-surface-variant hover:text-on-surface">
+                            <h2 className="text-base font-bold text-gray-900">Publicar nueva vacante</h2>
+                            <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-700 transition-colors">
                                 <span className="material-symbols-outlined">close</span>
                             </button>
                         </div>
-                        {formError && <div className="bg-[#ffdad6] border border-red-200 text-[#93000a] rounded-lg px-4 py-3 text-sm">{formError}</div>}
+                        {formError && (
+                            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{formError}</div>
+                        )}
                         <form onSubmit={handleCrearVacante} className="flex flex-col gap-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {[
-                                    { name: "titulo", label: "Título del cargo", placeholder: "Ej: Desarrollador Frontend Junior", required: true },
-                                    { name: "empresa", label: "Nombre de la empresa", placeholder: "Ej: TechCorp S.A.S.", required: true },
-                                    { name: "ciudad", label: "Ciudad", placeholder: "Ej: Armenia, Quindío", required: true },
-                                    { name: "area", label: "Área", placeholder: "Ej: Tecnología, Administración", required: true },
-                                    { name: "salario", label: "Salario (opcional)", placeholder: "Ej: $1.500.000 - $2.000.000", required: false },
-                                    { name: "requisitos", label: "Requisitos (separados por coma)", placeholder: "Ej: React, Node.js, Git", required: false },
-                                ].map(f => (
-                                    <div key={f.name} className="flex flex-col gap-1">
-                                        <label className="text-sm font-semibold text-on-surface">{f.label} {f.required && <span className="text-red-500">*</span>}</label>
-                                        <input name={f.name} value={(form as any)[f.name]} onChange={handleFormChange}
-                                               placeholder={f.placeholder} required={f.required}
-                                               className="px-3 py-2.5 border border-outline-variant rounded-lg text-sm bg-surface focus:outline-none focus:border-primary" />
+                                    { name: "titulo",     label: "Título del cargo",            placeholder: "Ej: Desarrollador Frontend Junior", req: true  },
+                                    { name: "empresa",    label: "Nombre de la empresa",        placeholder: "Ej: TechCorp S.A.S.",              req: true  },
+                                    { name: "ciudad",     label: "Ciudad",                      placeholder: "Ej: Armenia, Quindío",             req: true  },
+                                    { name: "area",       label: "Área",                        placeholder: "Ej: Tecnología",                   req: true  },
+                                    { name: "salario",    label: "Salario (opcional)",          placeholder: "Ej: $1.500.000 - $2.000.000",      req: false },
+                                    { name: "requisitos", label: "Requisitos (separados por ,)", placeholder: "Ej: React, Node.js, Git",         req: false },
+                                ].map((f) => (
+                                    <div key={f.name} className="flex flex-col gap-1.5">
+                                        <label className="text-sm font-semibold text-gray-700">
+                                            {f.label}{f.req && <span className="text-red-500 ml-1">*</span>}
+                                        </label>
+                                        <input
+                                            name={f.name} value={(form as any)[f.name]} onChange={handleFormChange}
+                                            placeholder={f.placeholder} required={f.req}
+                                            className="px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:border-gray-500"
+                                        />
                                     </div>
                                 ))}
-                                <div className="flex flex-col gap-1">
-                                    <label className="text-sm font-semibold text-on-surface">Modalidad <span className="text-red-500">*</span></label>
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-sm font-semibold text-gray-700">Modalidad <span className="text-red-500">*</span></label>
                                     <select name="modalidad" value={form.modalidad} onChange={handleFormChange} required
-                                            className="px-3 py-2.5 border border-outline-variant rounded-lg text-sm bg-surface focus:outline-none focus:border-primary">
+                                            className="px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:border-gray-500">
                                         <option value="">Selecciona modalidad</option>
-                                        {MODALIDADES.map(m => <option key={m} value={m}>{m}</option>)}
+                                        {MODALIDADES.map((m) => <option key={m}>{m}</option>)}
                                     </select>
                                 </div>
-                                <div className="flex flex-col gap-1">
-                                    <label className="text-sm font-semibold text-on-surface">Tipo <span className="text-red-500">*</span></label>
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-sm font-semibold text-gray-700">Tipo <span className="text-red-500">*</span></label>
                                     <select name="tipo" value={form.tipo} onChange={handleFormChange} required
-                                            className="px-3 py-2.5 border border-outline-variant rounded-lg text-sm bg-surface focus:outline-none focus:border-primary">
+                                            className="px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:border-gray-500">
                                         <option value="">Selecciona tipo</option>
-                                        {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+                                        {TIPOS.map((t) => <option key={t}>{t}</option>)}
                                     </select>
                                 </div>
                             </div>
-                            <div className="flex flex-col gap-1">
-                                <label className="text-sm font-semibold text-on-surface">Descripción <span className="text-red-500">*</span></label>
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-sm font-semibold text-gray-700">Descripción <span className="text-red-500">*</span></label>
                                 <textarea name="descripcion" value={form.descripcion} onChange={handleFormChange}
-                                          placeholder="Describe responsabilidades y lo que aprenderá el estudiante..." required rows={3}
-                                          className="px-3 py-2.5 border border-outline-variant rounded-lg text-sm bg-surface focus:outline-none focus:border-primary resize-none" />
+                                          placeholder="Describe las responsabilidades y lo que aprenderá el estudiante..." required rows={3}
+                                          className="px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:border-gray-500 resize-none" />
                             </div>
-                            <div className="flex justify-end gap-3 pt-2">
+                            <div className="flex justify-end gap-3 pt-1">
                                 <button type="button" onClick={() => setShowForm(false)}
-                                        className="px-5 py-2 text-sm border border-outline-variant rounded-lg text-on-surface hover:bg-surface-variant transition-colors">Cancelar</button>
+                                        className="px-5 py-2 text-sm border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">
+                                    Cancelar
+                                </button>
                                 <button type="submit" disabled={formLoading}
-                                        className="px-5 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:opacity-90 disabled:opacity-60 flex items-center gap-2">
-                                    {formLoading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Publicando...</> : <><span className="material-symbols-outlined text-[16px]">publish</span>Publicar</>}
+                                        className="px-6 py-2 text-sm font-semibold text-white rounded-xl hover:opacity-90 disabled:opacity-60 flex items-center gap-2"
+                                        style={{ backgroundColor: "#0d1c32" }}>
+                                    {formLoading
+                                        ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Publicando...</>
+                                        : <><span className="material-symbols-outlined text-[16px]">publish</span>Publicar</>}
                                 </button>
                             </div>
                         </form>
                     </div>
                 )}
 
-                {/* Layout dos columnas: vacantes | postulados */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                {/* Grid principal */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-                    {/* Columna izquierda: lista de vacantes */}
+                    {/* ── Lista de vacantes ── */}
                     <div className="flex flex-col gap-3">
-                        <h2 className="text-base font-semibold text-on-surface">Vacantes publicadas</h2>
+                        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                            Vacantes publicadas
+                            {!loading && <span className="ml-2 font-normal normal-case text-gray-400">({vacantes.length})</span>}
+                        </h2>
                         {loading ? (
-                            <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+                            <div className="flex justify-center py-16">
+                                <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+                            </div>
                         ) : vacantes.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-16 gap-3 text-on-surface-variant border border-dashed border-outline-variant rounded-xl">
-                                <span className="material-symbols-outlined text-[40px]">work_outline</span>
-                                <p className="text-sm">Aún no has publicado vacantes.</p>
+                            <div className="bg-white rounded-2xl border border-dashed border-gray-300 flex flex-col items-center py-16 gap-3">
+                                <span className="material-symbols-outlined text-[40px] text-gray-300">work_outline</span>
+                                <p className="text-sm text-gray-400">Aún no has publicado vacantes.</p>
                             </div>
                         ) : (
-                            vacantes.map(vac => (
-                                <button key={vac.id} onClick={() => fetchPostulados(vac)}
-                                        className={`text-left bg-surface border rounded-xl p-4 flex flex-col gap-2 shadow-sm hover:shadow-md transition-all cursor-pointer ${vacanteSeleccionada?.id === vac.id ? "border-primary ring-1 ring-primary" : "border-outline-variant"}`}>
+                            vacantes.map((vac) => (
+                                <button
+                                    key={vac.id} onClick={() => fetchPostulados(vac)}
+                                    className={`text-left bg-white border rounded-2xl p-4 flex flex-col gap-3 shadow-sm hover:shadow-md transition-all cursor-pointer ${
+                                        vacanteSeleccionada?.id === vac.id
+                                            ? "border-gray-900 ring-1 ring-gray-900"
+                                            : "border-gray-200"
+                                    }`}
+                                >
                                     <div className="flex items-start gap-3">
-                                        <div className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center shrink-0">
-                                            <span className="text-white font-bold">{vac.empresa.charAt(0).toUpperCase()}</span>
+                                        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 font-bold text-white text-sm"
+                                             style={{ backgroundColor: "#0d1c32" }}>
+                                            {vac.empresa.charAt(0).toUpperCase()}
                                         </div>
-                                        <div>
-                                            <p className="font-semibold text-sm text-on-surface">{vac.titulo}</p>
-                                            <p className="text-xs text-on-surface-variant">{vac.empresa} · {vac.ciudad}</p>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-semibold text-sm text-gray-900 truncate">{vac.titulo}</p>
+                                            <p className="text-xs text-gray-500 truncate">{vac.empresa} · {vac.ciudad}</p>
                                         </div>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        <span className="text-xs px-2 py-0.5 rounded-full bg-surface-variant text-on-surface-variant">{vac.modalidad}</span>
-                                        <span className="text-xs px-2 py-0.5 rounded-full bg-surface-variant text-on-surface-variant">{vac.tipo}</span>
-                                        <span className={`text-xs px-2 py-0.5 rounded-full ${vac.activa ? "bg-[#e8f5e9] text-[#1b5e20]" : "bg-surface-variant text-on-surface-variant"}`}>
+                                        <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
+                                            vac.activa ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"
+                                        }`}>
                                             {vac.activa ? "Activa" : "Inactiva"}
                                         </span>
                                     </div>
-                                    <p className="text-xs text-primary font-medium">Ver postulados →</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        <span className="text-xs px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">{vac.modalidad}</span>
+                                        <span className="text-xs px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">{vac.tipo}</span>
+                                    </div>
+                                    <p className="text-xs font-semibold text-gray-400 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-[14px]">group</span>
+                                        Ver candidatos
+                                    </p>
                                 </button>
                             ))
                         )}
                     </div>
 
-                    {/* Columna derecha: postulados a la vacante seleccionada */}
-                    <div className="flex flex-col gap-3 md:sticky md:top-20">
+                    {/* ── Panel de candidatos ── */}
+                    <div className="flex flex-col gap-3 lg:sticky lg:top-20">
                         {!vacanteSeleccionada ? (
-                            <div className="flex flex-col items-center justify-center py-16 gap-3 text-on-surface-variant border border-dashed border-outline-variant rounded-xl">
-                                <span className="material-symbols-outlined text-[40px]">person_search</span>
-                                <p className="text-sm text-center">Selecciona una vacante para ver los candidatos postulados</p>
+                            <div className="bg-white rounded-2xl border border-dashed border-gray-300 flex flex-col items-center py-20 gap-3">
+                                <span className="material-symbols-outlined text-[48px] text-gray-300">person_search</span>
+                                <p className="text-sm text-gray-400 text-center px-8">
+                                    Selecciona una vacante de la izquierda para ver los candidatos
+                                </p>
                             </div>
                         ) : (
                             <>
                                 <div className="flex items-center justify-between">
-                                    <h2 className="text-base font-semibold text-on-surface">
-                                        Postulados a: <span className="text-primary">{vacanteSeleccionada.titulo}</span>
+                                    <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                                        Candidatos:{" "}
+                                        <span className="text-gray-900 normal-case font-bold">{vacanteSeleccionada.titulo}</span>
                                     </h2>
                                     <button onClick={() => { setVacanteSeleccionada(null); setPostulados([]); }}
-                                            className="text-on-surface-variant hover:text-on-surface">
+                                            className="text-gray-400 hover:text-gray-700 transition-colors">
                                         <span className="material-symbols-outlined text-[20px]">close</span>
                                     </button>
                                 </div>
 
                                 {postuladosLoading ? (
-                                    <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+                                    <div className="flex justify-center py-16">
+                                        <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+                                    </div>
                                 ) : postulados.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center py-12 gap-2 text-on-surface-variant border border-dashed border-outline-variant rounded-xl">
-                                        <span className="material-symbols-outlined text-[36px]">inbox</span>
-                                        <p className="text-sm">Ningún estudiante se ha postulado aún.</p>
+                                    <div className="bg-white rounded-2xl border border-dashed border-gray-300 flex flex-col items-center py-14 gap-2">
+                                        <span className="material-symbols-outlined text-[36px] text-gray-300">inbox</span>
+                                        <p className="text-sm text-gray-400">Ningún candidato aún.</p>
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col gap-3">
-                                        {postulados.map(p => (
-                                            <div key={p.id} className="bg-surface border border-outline-variant rounded-xl p-4 flex flex-col gap-3 shadow-sm">
-                                                {/* Cabecera del candidato */}
-                                                <div className="flex items-start gap-3">
-                                                    <div className="w-10 h-10 bg-surface-variant rounded-full flex items-center justify-center shrink-0">
-                                                        <span className="text-on-surface-variant font-bold text-base">{p.nombre?.charAt(0).toUpperCase()}</span>
+                                    <div className="flex flex-col gap-4 max-h-[calc(100vh-200px)] overflow-y-auto pr-1">
+                                        {postulados.map((p) => {
+                                            const eInfo = estadoStyle(p.estado);
+                                            return (
+                                                <div key={p.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                                                    {/* Banda de color */}
+                                                    <div className={`h-1 w-full ${
+                                                        p.estado === "aceptada" ? "bg-emerald-400" :
+                                                            p.estado === "rechazada" ? "bg-red-400" :
+                                                                p.estado === "entrevista" ? "bg-blue-400" :
+                                                                    p.estado === "vista" ? "bg-amber-400" :
+                                                                        "bg-gray-200"
+                                                    }`} />
+
+                                                    <div className="p-5 flex flex-col gap-4">
+                                                        {/* Cabecera candidato */}
+                                                        <div className="flex items-start gap-3">
+                                                            <div className="w-10 h-10 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
+                                                                <span className="font-bold text-gray-600 text-sm">
+                                                                    {p.nombre?.charAt(0).toUpperCase()}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="font-semibold text-gray-900 text-sm truncate">{p.nombre}</p>
+                                                                <p className="text-xs text-gray-500 truncate">{p.email}</p>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Selector de estado */}
+                                                        <div className="flex items-center gap-2">
+                                                            <label className="text-xs font-semibold text-gray-500 shrink-0">Estado:</label>
+                                                            <div className="relative flex-1">
+                                                                <select
+                                                                    value={p.estado}
+                                                                    disabled={updatingEstado[p.id]}
+                                                                    onChange={(e) => handleCambiarEstado(p.id, e.target.value)}
+                                                                    className={`w-full text-xs font-semibold pl-7 pr-6 py-1.5 rounded-full border-0 outline-none cursor-pointer appearance-none ${eInfo.style} ${
+                                                                        updatingEstado[p.id] ? "opacity-50 cursor-not-allowed" : ""
+                                                                    }`}
+                                                                >
+                                                                    {ESTADOS.map((s) => (
+                                                                        <option key={s.value} value={s.value}>{s.label}</option>
+                                                                    ))}
+                                                                </select>
+                                                                <span className="material-symbols-outlined absolute left-1.5 top-1/2 -translate-y-1/2 text-[14px] pointer-events-none">
+                                                                    {ESTADO_ICON[p.estado] ?? "schedule"}
+                                                                </span>
+                                                                {updatingEstado[p.id]
+                                                                    ? <div className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                                                                    : <span className="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 text-[14px] pointer-events-none">expand_more</span>
+                                                                }
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Datos académicos — sin emojis */}
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            {[
+                                                                { icon: "school",          val: p.universidad },
+                                                                { icon: "menu_book",       val: p.programa },
+                                                                { icon: "calendar_month",  val: p.semestre ? `Semestre ${p.semestre}` : null },
+                                                                { icon: "star",            val: `Perfil ${p.completitud}% completo` },
+                                                            ].filter((r) => r.val).map(({ icon, val }) => (
+                                                                <div key={icon} className="flex items-center gap-1.5 text-xs text-gray-600">
+                                                                    <span className="material-symbols-outlined text-[14px] text-gray-400">{icon}</span>
+                                                                    <span className="truncate">{val}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+
+                                                        {/* Habilidades */}
+                                                        {p.habilidades && p.habilidades.length > 0 && (
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {p.habilidades.map((h, i) => (
+                                                                    <span key={i} className="text-xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100">
+                                                                        {h}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Carta */}
+                                                        <div className="bg-gray-50 rounded-xl border border-gray-100 p-3.5">
+                                                            <p className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Carta de motivación</p>
+                                                            <p className="text-sm text-gray-700 leading-relaxed line-clamp-4">
+                                                                {p.cartaMotivacion?.replace(/\\r\\n|\\n|\\r/g, " ").trim() || "—"}
+                                                            </p>
+                                                        </div>
+
+                                                        {/* Expectativa y disponibilidad — sin emojis */}
+                                                        <div className="flex flex-wrap gap-4 border-t border-gray-100 pt-3">
+                                                            <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                                                                <span className="material-symbols-outlined text-[14px] text-gray-400">payments</span>
+                                                                <span className="text-gray-400">Expectativa:</span>
+                                                                <span className="font-semibold">{p.expectativaSalarial || "—"}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                                                                <span className="material-symbols-outlined text-[14px] text-gray-400">event_available</span>
+                                                                <span className="text-gray-400">Disponible:</span>
+                                                                <span className="font-semibold">{p.disponibilidad || "—"}</span>
+                                                            </div>
+                                                        </div>
+
+                                                        <p className="text-xs text-gray-400 flex items-center gap-1">
+                                                            <span className="material-symbols-outlined text-[13px]">schedule</span>
+                                                            Postulado el{" "}
+                                                            {new Date(p.fecha).toLocaleDateString("es-CO", {
+                                                                day: "2-digit", month: "long", year: "numeric",
+                                                            })}
+                                                        </p>
                                                     </div>
-                                                    <div className="flex-1">
-                                                        <p className="font-semibold text-sm text-on-surface">{p.nombre}</p>
-                                                        <p className="text-xs text-on-surface-variant">{p.email}</p>
-                                                    </div>
-                                                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${estadoColor(p.estado)}`}>
-                                                        {estadoLabel(p.estado)}
-                                                    </span>
                                                 </div>
-
-                                                {/* Info académica */}
-                                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-on-surface-variant border-t border-outline-variant pt-2">
-                                                    {p.universidad && <span>🎓 {p.universidad}</span>}
-                                                    {p.programa   && <span>📚 {p.programa}</span>}
-                                                    {p.semestre   && <span>📅 Semestre {p.semestre}</span>}
-                                                    <span>⭐ Perfil {p.completitud}% completo</span>
-                                                </div>
-
-                                                {/* Habilidades */}
-                                                {p.habilidades && p.habilidades.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {p.habilidades.map((h, i) => (
-                                                            <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-[#e0e7ff] text-[#3730a3]">{h}</span>
-                                                        ))}
-                                                    </div>
-                                                )}
-
-                                                {/* Carta de motivación */}
-                                                <div className="bg-surface-container-low rounded-lg p-3 text-xs text-on-surface-variant border border-outline-variant">
-                                                    <p className="font-semibold text-on-surface mb-1">Carta de motivación</p>
-                                                    <p className="leading-relaxed">{p.cartaMotivacion}</p>
-                                                </div>
-
-                                                {/* Expectativa y disponibilidad */}
-                                                <div className="flex gap-4 text-xs text-on-surface-variant">
-                                                    <span>💰 Expectativa: {p.expectativaSalarial}</span>
-                                                    <span>📆 Disponible: {p.disponibilidad}</span>
-                                                </div>
-
-                                                <p className="text-xs text-on-surface-variant">
-                                                    Postulado el {new Date(p.fecha).toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric" })}
-                                                </p>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </>
@@ -358,13 +469,15 @@ export default function EmpresaDashboard() {
                 </div>
             </main>
 
-            <footer className="bg-surface-container-highest w-full py-6 px-6 md:px-12 flex flex-col md:flex-row justify-between items-center gap-4 mt-auto">
-                <span className="text-base font-bold" style={{ color: "#0d1c32" }}>Empleo<span style={{ color: "#f97316" }}>Uni</span></span>
-                <p className="text-sm text-on-surface">© 2024 EmpleoUni - Talento Universitario Colombiano</p>
-                <div className="flex gap-4 text-sm text-on-surface-variant">
-                    <a href="#" className="hover:underline">Contacto</a>
-                    <a href="#" className="hover:underline">Términos</a>
-                    <a href="#" className="hover:underline">Privacidad</a>
+            <footer className="border-t border-gray-200 bg-white py-5 px-8 flex flex-col md:flex-row justify-between items-center gap-3 mt-auto">
+                <span className="text-sm font-bold" style={{ color: "#0d1c32" }}>
+                    Empleo<span style={{ color: "#f97316" }}>Uni</span>
+                </span>
+                <p className="text-xs text-gray-400">© 2024 EmpleoUni - Talento Universitario Colombiano</p>
+                <div className="flex gap-4 text-xs text-gray-400">
+                    <a href="#" className="hover:text-gray-700">Contacto</a>
+                    <a href="#" className="hover:text-gray-700">Términos</a>
+                    <a href="#" className="hover:text-gray-700">Privacidad</a>
                 </div>
             </footer>
         </div>

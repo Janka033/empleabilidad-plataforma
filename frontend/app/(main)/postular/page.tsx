@@ -134,6 +134,95 @@ export default function PostularPage() {
         }
     };
 
+    // ─── SUCCESS PAGE ────────────────────────────────────────────────────────
+    if (showSuccessModal) {
+        return (
+            <>
+                <div className="bg-background text-on-background min-h-screen flex flex-col pt-16 font-sans">
+                    {/* Navbar */}
+                    <nav className="fixed top-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-xl h-16 max-w-container-max mx-auto bg-surface border-b border-outline-variant shadow-sm">
+                        <span className="font-headline-md text-headline-md font-bold text-primary">EmpleoUni</span>
+                        <div className="hidden md:flex items-center gap-lg">
+                            <a className="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="/vacantes">Vacantes</a>
+                            <a className="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="/perfil">Mi Perfil</a>
+                        </div>
+                        <button
+                            onClick={() => { localStorage.removeItem("token"); router.push("/login"); }}
+                            className="font-label-md text-label-md bg-primary-container text-on-primary px-4 py-2 rounded font-bold hover:opacity-90 transition-opacity"
+                        >
+                            Cerrar sesión
+                        </button>
+                    </nav>
+
+                    {/* Centered success content */}
+                    <main className="flex-grow flex items-center justify-center w-full px-margin-mobile md:px-xl py-xl">
+                        <div className="w-full max-w-md mx-auto flex flex-col items-center text-center gap-xl">
+
+                            {/* Icon */}
+                            <div className="w-28 h-28 rounded-full bg-[#e8f5e9] flex items-center justify-center shadow-sm">
+                                <span className="material-symbols-outlined text-[56px] text-[#1b5e20]">check_circle</span>
+                            </div>
+
+                            {/* Message block */}
+                            <div className="flex flex-col gap-md">
+                                <h2 className="font-headline-lg text-headline-lg text-primary">
+                                    ¡Postulación enviada!
+                                </h2>
+                                <p className="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+                                    Tu perfil fue enviado exitosamente a{" "}
+                                    <span className="font-semibold text-on-surface">{vacante?.empresa}</span>.
+                                </p>
+                                <p className="font-body-md text-body-md text-on-surface-variant">
+                                    Puedes hacer seguimiento del proceso desde tu panel de control.
+                                </p>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="w-full h-px bg-outline-variant" />
+
+                            {/* Actions */}
+                            <div className="flex flex-col sm:flex-row gap-md w-full">
+                                <button
+                                    onClick={() => router.push("/vacantes")}
+                                    className="flex-1 font-label-md text-label-md font-bold px-lg py-3 rounded bg-primary text-on-primary hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-sm"
+                                >
+                                    <span className="material-symbols-outlined text-[18px]">search</span>
+                                    Ver más vacantes
+                                </button>
+                                <button
+                                    onClick={() => router.push("/perfil")}
+                                    className="flex-1 font-label-md text-label-md px-lg py-3 rounded border border-outline-variant text-primary hover:bg-surface-variant transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <span className="material-symbols-outlined text-[18px]">person</span>
+                                    Mis postulaciones
+                                </button>
+                            </div>
+
+                            {/* Small hint */}
+                            <p className="font-body-sm text-body-sm text-on-surface-variant opacity-70">
+                                Las empresas suelen responder en un plazo de 3 a 7 días hábiles.
+                            </p>
+                        </div>
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="w-full py-lg px-margin-mobile md:px-xl flex flex-col md:flex-row justify-between items-center gap-md bg-surface-container-highest mt-auto">
+                        <div className="flex flex-col items-center md:items-start gap-1">
+                            <span className="font-headline-md text-headline-md font-bold text-primary">EmpleoUni</span>
+                            <span className="font-body-sm text-body-sm text-on-surface-variant">© 2024 EmpleoUni - Talento Universitario Colombiano</span>
+                        </div>
+                        <div className="flex items-center gap-md">
+                            <a className="font-body-sm text-body-sm text-on-surface-variant hover:underline opacity-80 hover:opacity-100" href="#">Contacto</a>
+                            <a className="font-body-sm text-body-sm text-on-surface-variant hover:underline opacity-80 hover:opacity-100" href="#">Términos y Condiciones</a>
+                            <a className="font-body-sm text-body-sm text-on-surface-variant hover:underline opacity-80 hover:opacity-100" href="#">Privacidad</a>
+                        </div>
+                    </footer>
+                </div>
+            </>
+        );
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     if (!vacante && !error && !shouldRedirect) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background text-on-background">
@@ -417,35 +506,6 @@ export default function PostularPage() {
                         </section>
                     </div>
                 </main>
-
-                {/* Success Modal */}
-                {showSuccessModal && (
-                    <div className="fixed inset-0 z-[100] bg-inverse-surface/80 backdrop-blur-sm flex items-center justify-center p-margin-mobile">
-                        <div className="bg-surface-container-lowest rounded-xl shadow-xl p-xl w-full max-w-lg flex flex-col items-center text-center gap-lg">
-                            <div className="w-16 h-16 rounded-full bg-[#e8f5e9] flex items-center justify-center mb-2">
-                <span className="material-symbols-outlined text-[32px] text-[#1b5e20]">
-                  check_circle
-                </span>
-                            </div>
-                            <h3 className="font-headline-md text-headline-md text-primary">
-                                ¡Postulación enviada exitosamente!
-                            </h3>
-                            <p className="font-body-md text-body-md text-on-surface-variant">
-                                Tu perfil ha sido enviado a {vacante?.empresa}. Puedes hacer
-                                seguimiento del proceso en tu panel de control.
-                            </p>
-                            <button
-                                onClick={() => {
-                                    setShowSuccessModal(false);
-                                    router.push("/vacantes");
-                                }}
-                                className="mt-4 font-label-md text-label-md px-lg py-2 rounded border border-outline-variant text-primary hover:bg-surface-variant transition-colors w-full"
-                            >
-                                Ver más vacantes
-                            </button>
-                        </div>
-                    </div>
-                )}
 
                 {/* Footer */}
                 <footer className="w-full py-lg px-margin-mobile md:px-xl flex flex-col md:flex-row justify-between items-center gap-md bg-surface-container-highest mt-auto">

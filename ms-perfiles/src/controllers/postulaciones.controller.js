@@ -14,7 +14,7 @@ const pool = new Pool({
 const asyncHandler = (fn) => (req, res, next) =>
     Promise.resolve(fn(req, res, next)).catch(next);
 
-const ESTADOS_VALIDOS = ["enviada", "vista", "entrevista", "rechazada", "aceptada"];
+const ESTADOS_VALIDOS = ["enviada", "vista", "entrevista", "rechazada", "aceptada", "confirmada", "rechazada_por_estudiante"];
 
 const ESTADO_LABELS = {
     enviada:    "enviada",
@@ -22,6 +22,8 @@ const ESTADO_LABELS = {
     entrevista: "en proceso de entrevista",
     rechazada:  "rechazada",
     aceptada:   "aceptada",
+    confirmada: "confirmada",
+    rechazada_por_estudiante: "rechazada por el estudiante",
 };
 
 // GET /postulaciones/me — estudiante ve sus postulaciones
@@ -67,8 +69,7 @@ const createPostulacion = asyncHandler(async (req, res) => {
         disponibilidad,
     });
 
-    // Notificar a la empresa (necesitamos el empresa_id de la vacante)
-    // Lo buscamos desde ms-vacantes via HTTP (best-effort)
+    // Notificar a la empresa
     try {
         const VACANTES_URL = process.env.VACANTES_SERVICE_URL || "http://ms-vacantes:3003";
         const vRes = await fetch(`${VACANTES_URL}/vacantes/${vacanteId}`, {
@@ -113,22 +114,21 @@ const updateEstado = asyncHandler(async (req, res) => {
         });
     }
 
+    // Obtener estado actual antes de actualizar (para validar)
+    const postulacionActual = await PostulacionModel.findById(id);
+    if (!postulacionActual) return res.status(404).json({ message: "Postulación no encontrada" });
+
+    // No permitir modificar si ya está aceptada o confirmada
+    if (postulacionActual.estado === "aceptada" || postulacionActual.estado === "confirmada") {
+        return res.status(400).json({ message: "No puedes modificar una oferta ya aceptada o confirmada" });
+    }
+
     const postulacion = await PostulacionModel.updateEstado(id, estado);
     if (!postulacion) return res.status(404).json({ message: "Postulación no encontrada" });
 
-    // Obtener userId del estudiante a través del perfil
+    // Obtener datos del estudiante y su perfil (consulta simple)
     try {
         const { rows } = await pool.query(
-            `SELECT p.user_id, p.nombre, p.contratado, pr.empresa AS empresa_contratante
-             FROM perfiles p
-             JOIN postulaciones post ON post.perfil_id = p.id
-             LEFT JOIN postulaciones pr ON pr.id = post.id
-             WHERE post.id = $1 LIMIT 1`,
-            [id]
-        );
-
-        // Query más simple
-        const { rows: rows2 } = await pool.query(
             `SELECT pf.user_id, pf.nombre, pf.id as perfil_id
              FROM postulaciones po
              JOIN perfiles pf ON pf.id = po.perfil_id
@@ -136,8 +136,8 @@ const updateEstado = asyncHandler(async (req, res) => {
             [id]
         );
 
-        if (rows2.length > 0) {
-            const { user_id, nombre, perfil_id } = rows2[0];
+        if (rows.length > 0) {
+            const { user_id, nombre, perfil_id } = rows[0];
 
             // Notificar al estudiante del cambio de estado
             const estadoLabel = ESTADO_LABELS[estado] || estado;
@@ -149,24 +149,30 @@ const updateEstado = asyncHandler(async (req, res) => {
                 meta:    { postulacionId: id, estado, vacanteId: postulacion.vacanteId },
             });
 
-            // Si fue aceptada → marcar al estudiante como contratado
+            // Si fue aceptada → notificar oferta (sin contratar aún)
             if (estado === "aceptada") {
-                // Obtener nombre de la empresa desde el token
-                const empresaNombre = req.user.nombre || "la empresa";
-                await pool.query(
-                    `UPDATE perfiles
-                     SET contratado = TRUE, empresa_contratante = $2
-                     WHERE id = $1`,
-                    [perfil_id, empresaNombre]
-                );
+                // Obtener nombre real de la empresa
+                let empresaNombre = "la empresa";
+                try {
+                    const VACANTES_URL = process.env.VACANTES_SERVICE_URL || "http://ms-vacantes:3003";
+                    const vacRes = await fetch(`${VACANTES_URL}/vacantes/${postulacion.vacanteId}`, {
+                        headers: { Authorization: req.headers["authorization"] },
+                    });
+                    if (vacRes.ok) {
+                        const vacante = await vacRes.json();
+                        empresaNombre = vacante.empresa;
+                    }
+                } catch (err) {
+                    console.error("Error obteniendo nombre de empresa:", err.message);
+                }
 
-                // Notificación especial de contratación
+                // Notificación de oferta (el estudiante decidirá después)
                 await NotificacionModel.create({
-                    userId:  user_id,
-                    tipo:    "contratado",
-                    titulo:  "¡Felicitaciones! Fuiste seleccionado",
-                    mensaje: `Fuiste seleccionado por ${empresaNombre}. ¡Tu práctica profesional comienza pronto!`,
-                    meta:    { postulacionId: id, vacanteId: postulacion.vacanteId },
+                    userId: user_id,
+                    tipo: "oferta_recibida",
+                    titulo: "¡Oferta recibida!",
+                    mensaje: `${empresaNombre} te ha aceptado. Revisa tu panel y confirma si deseas realizar tu práctica con ellos.`,
+                    meta: { postulacionId: id, estado, vacanteId: postulacion.vacanteId },
                 });
             }
         }
@@ -176,6 +182,109 @@ const updateEstado = asyncHandler(async (req, res) => {
     }
 
     return res.json(postulacion);
+});
+
+// POST /postulaciones/:id/confirmar — estudiante confirma aceptación (elige esta empresa)
+// POST /postulaciones/:id/confirmar — estudiante confirma aceptación (elige esta empresa)
+const confirmarAceptacion = asyncHandler(async (req, res) => {
+    if (req.user.rol !== "estudiante") {
+        return res.status(403).json({ message: "Solo estudiantes pueden confirmar" });
+    }
+
+    const { id } = req.params;
+
+    // Obtener postulación con datos del perfil (sin vacantes)
+    const { rows } = await pool.query(
+        `SELECT po.*, pf.user_id, pf.contratado, pf.id as perfil_id, pf.nombre as estudiante_nombre
+         FROM postulaciones po
+                  JOIN perfiles pf ON pf.id = po.perfil_id
+         WHERE po.id = $1`,
+        [id]
+    );
+
+    if (rows.length === 0) {
+        return res.status(404).json({ message: "Postulación no encontrada" });
+    }
+    const postulacion = rows[0];
+
+    // Verificar que pertenece al estudiante autenticado
+    if (postulacion.user_id !== req.user.id) {
+        return res.status(403).json({ message: "No autorizado" });
+    }
+
+    // Verificar que está en estado "aceptada"
+    if (postulacion.estado !== "aceptada") {
+        return res.status(400).json({ message: "Solo puedes confirmar ofertas aceptadas" });
+    }
+
+    // Verificar que no esté ya contratado
+    if (postulacion.contratado) {
+        return res.status(400).json({ message: "Ya tienes una práctica asignada" });
+    }
+
+    // Obtener datos de la vacante desde ms-vacantes (HTTP)
+    let empresaNombre = "la empresa";
+    let empresaId = null;
+    try {
+        const VACANTES_URL = process.env.VACANTES_SERVICE_URL || "http://ms-vacantes:3003";
+        const vacRes = await fetch(`${VACANTES_URL}/vacantes/${postulacion.vacante_id}`, {
+            headers: { Authorization: req.headers["authorization"] },
+        });
+        if (vacRes.ok) {
+            const vacante = await vacRes.json();
+            empresaNombre = vacante.empresa;
+            empresaId = vacante.empresa_id;
+        } else {
+            console.error("Error obteniendo vacante:", await vacRes.text());
+        }
+    } catch (err) {
+        console.error("Error conectando a ms-vacantes:", err.message);
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        // 1. Marcar este perfil como contratado
+        await client.query(
+            `UPDATE perfiles SET contratado = TRUE, empresa_contratante = $1 WHERE id = $2`,
+            [empresaNombre, postulacion.perfil_id]
+        );
+
+        // 2. Cambiar estado de esta postulación a "confirmada"
+        await client.query(
+            `UPDATE postulaciones SET estado = 'confirmada' WHERE id = $1`,
+            [id]
+        );
+
+        // 3. Rechazar automáticamente las otras postulaciones aceptadas del mismo estudiante
+        await client.query(
+            `UPDATE postulaciones SET estado = 'rechazada_por_estudiante'
+             WHERE perfil_id = $1 AND id != $2 AND estado = 'aceptada'`,
+            [postulacion.perfil_id, id]
+        );
+
+        await client.query("COMMIT");
+
+        // Notificar a la empresa (si tenemos empresaId)
+        if (empresaId) {
+            await NotificacionModel.create({
+                userId: empresaId,
+                tipo: "confirmacion_estudiante",
+                titulo: "Estudiante confirmó su práctica",
+                mensaje: `${postulacion.estudiante_nombre} ha aceptado realizar su práctica en ${empresaNombre}.`,
+                meta: { postulacionId: id, vacanteId: postulacion.vacante_id },
+            });
+        }
+
+        return res.json({ message: "Práctica confirmada exitosamente" });
+    } catch (err) {
+        await client.query("ROLLBACK");
+        console.error("Error confirmando aceptación:", err);
+        return res.status(500).json({ message: "Error interno al confirmar" });
+    } finally {
+        client.release();
+    }
 });
 
 // PATCH /postulaciones/:id/favorita — estudiante marca vacante favorita
@@ -204,11 +313,31 @@ const marcarFavorita = asyncHandler(async (req, res) => {
 
     return res.json(updated[0]);
 });
-
+const liberarEstudiante = asyncHandler(async (req, res) => {
+    if (req.user.rol !== "empresa") {
+        return res.status(403).json({ message: "Solo empresas pueden liberar" });
+    }
+    const { id } = req.params; // id del perfil del estudiante
+    // Verificar que la empresa tiene derecho: solo si empresa_contratante coincide con el nombre de la empresa autenticada
+    const perfil = await PerfilModel.findById(id);
+    if (!perfil) return res.status(404).json({ message: "Perfil no encontrado" });
+    if (perfil.empresa_contratante !== req.user.nombre && perfil.empresa_contratante !== req.user.empresa) {
+        // req.user.nombre no está en el token, necesitas extraer empresa del token o de la vacante.
+        // Opción simple: pasar el nombre de la empresa desde el frontend (no seguro).
+        // Lo mejor es que el token de empresa incluya su nombre.
+        return res.status(403).json({ message: "No autorizado para liberar este estudiante" });
+    }
+    await pool.query(
+        `UPDATE perfiles SET contratado = FALSE, empresa_contratante = NULL WHERE id = $1`,
+        [id]
+    );
+    return res.json({ message: "Estudiante liberado, puede postularse nuevamente" });
+});
 module.exports = {
     getMyPostulaciones,
     createPostulacion,
     getPostuladosByVacante,
     updateEstado,
+    confirmarAceptacion,  // << nuevo
     marcarFavorita,
 };

@@ -1,16 +1,16 @@
 const { Router } = require("express");
-const { getMe, getById, update, updateMe, create } = require("../controllers/perfiles.controller");
+const { getMe, getById, update, updateMe, create, liberarEstudiante } = require("../controllers/perfiles.controller");
 const { verifyToken } = require("../middlewares/auth.middleware");
 
 const router = Router();
 
-router.use(verifyToken); // todas las rutas requieren auth
+router.use(verifyToken);
 
-// IMPORTANTE: rutas específicas ANTES de /:id para evitar conflictos
-router.post("/", create);       // ms-auth llama esto al registrar un nuevo usuario
-router.get("/me", getMe);       // perfil del usuario autenticado
-router.put("/me", updateMe);    // actualizar perfil del usuario autenticado
-router.get("/:id", getById);    // perfil por ID (uso interno / empresa viendo estudiante)
-router.put("/:id", update);     // actualizar perfil por ID
+router.post("/", create);
+router.get("/me", getMe);
+router.put("/me", updateMe);
+router.get("/:id", getById);
+router.put("/:id", update);
+router.patch("/liberar/:id", liberarEstudiante);  // ✅ ahora liberarEstudiante está definido
 
 module.exports = router;

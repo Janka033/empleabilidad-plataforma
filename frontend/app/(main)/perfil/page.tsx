@@ -48,6 +48,7 @@ const ESTADO_CONFIG: Record<string, { label: string; bg: string; text: string; i
     entrevista: { label: "En proceso",    bg: "bg-blue-50",    text: "text-blue-700",    icon: "groups",        color: "bg-blue-400"    },
     aceptada:   { label: "Aceptada ✓",   bg: "bg-emerald-50", text: "text-emerald-700", icon: "check_circle",  color: "bg-emerald-400" },
     rechazada:  { label: "Rechazada",     bg: "bg-red-50",     text: "text-red-600",     icon: "cancel",        color: "bg-red-400"     },
+    confirmada: { label: "Confirmada", bg: "bg-purple-50", text: "text-purple-700", icon: "verified", color: "bg-purple-400" },
 };
 
 const HABILIDADES_SUGERIDAS = [
@@ -215,6 +216,38 @@ export default function PerfilPage() {
             }
         } catch {}
     };
+    const handleConfirmarOferta = async (postulacionId: string, empresaNombre: string) => {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+
+        const confirmado = confirm(
+            `¿Confirmas que deseas realizar tu práctica con ${empresaNombre}? No podrás cambiarlo después.`
+        );
+        if (!confirmado) return;
+
+        try {
+            const res = await fetch(`${API_URLS.perfiles}/postulaciones/${postulacionId}/confirmar`, {
+                method: "POST",
+                headers: authHeaders(token),
+            });
+            if (res.ok) {
+                alert("¡Felicidades! Has confirmado tu práctica. La empresa será notificada.");
+                // Recargar perfil y postulaciones para actualizar el estado
+                const token = localStorage.getItem("token");
+                if (token) {
+                    await fetchPerfil(token);
+                    await fetchPostulaciones(token);
+                    await fetchNotificaciones(token);
+                }
+            } else {
+                const data = await res.json();
+                alert(data.message || "Error al confirmar la oferta");
+            }
+        } catch (error) {
+            console.error("Error confirmando oferta:", error);
+            alert("Error de conexión. Intenta de nuevo.");
+        }
+    };
 
     const handleMarcarNotifLeida = async (notifId: string) => {
         const token = localStorage.getItem("token");
@@ -247,6 +280,7 @@ export default function PerfilPage() {
             Empleo<span style={{ color: "#f97316" }}>Uni</span>
           </span>
                     <div className="hidden md:flex gap-5 text-sm font-medium text-gray-500">
+                        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                         <a href="/vacantes" className="hover:text-gray-900 transition-colors">Vacantes</a>
                         <a href="/perfil" className="text-gray-900 font-semibold">Mi Perfil</a>
                     </div>
@@ -471,7 +505,9 @@ export default function PerfilPage() {
                             </div>
                         ) : (
                             <div className="flex flex-col gap-3">
-                                {postulaciones.map((p) => {
+                                {postulaciones
+                                    .filter(p => p.estado !== "rechazada_por_estudiante") // ← oculta las rechazadas por el estudiante
+                                    .map((p) => {
                                     const cfg = estadoCfg(p.estado);
                                     return (
                                         <div key={p.id} className={`bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow overflow-hidden ${
@@ -540,6 +576,17 @@ export default function PerfilPage() {
                                                         {new Date(p.fecha).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" })}
                                                     </div>
                                                 </div>
+                                                {/* Botón de confirmación solo si está aceptada y el estudiante no está contratado */}
+                                                {!perfil?.contratado && p.estado === "aceptada" && (
+                                                    <div className="mt-3 pt-2 border-t border-gray-100 flex justify-end">
+                                                        <button
+                                                            onClick={() => handleConfirmarOferta(p.id, p.vacanteEmpresa ?? "esta empresa")}
+                                                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors shadow-sm"
+                                                        >
+                                                            Elegir esta empresa para mi practica
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     );

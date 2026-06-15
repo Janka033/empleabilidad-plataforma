@@ -4,6 +4,7 @@ const {
     createPostulacion,
     getPostuladosByVacante,
     updateEstado,
+    confirmarAceptacion,   // << importar
     marcarFavorita,
 } = require("../controllers/postulaciones.controller");
 const { verifyToken } = require("../middlewares/auth.middleware");
@@ -16,6 +17,7 @@ router.get("/me",                      getMyPostulaciones);
 router.post("/",                       createPostulacion);
 router.get("/vacante/:vacanteId",      getPostuladosByVacante);
 router.patch("/:id/estado",            updateEstado);
-router.patch("/:id/favorita",          marcarFavorita);    // ← nuevo
+router.post("/:id/confirmar",          confirmarAceptacion);   // << nueva ruta
+router.patch("/:id/favorita",          marcarFavorita);
 
 module.exports = router;

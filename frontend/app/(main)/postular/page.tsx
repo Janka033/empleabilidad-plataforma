@@ -113,7 +113,7 @@ export default function PostularPage() {
                     </span>
                 </nav>
                 <div className="flex-1 flex items-center justify-center px-4 py-12">
-                    <div className="w-full max-w-2xl bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="w-full max-w-3xl bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                         <div className="h-2 w-full bg-gradient-to-r from-green-400 to-emerald-500" />
                         <div className="p-10 flex flex-col items-center text-center gap-8">
                             <div className="w-20 h-20 rounded-full bg-green-50 border-4 border-green-100 flex items-center justify-center">
@@ -121,7 +121,7 @@ export default function PostularPage() {
                             </div>
                             <div className="flex flex-col gap-3">
                                 <h1 className="text-3xl font-bold text-gray-900 tracking-tight">¡Postulación enviada!</h1>
-                                <p className="text-gray-500 text-base leading-relaxed max-w-md">
+                                <p className="text-gray-500 text-base leading-relaxed max-w-xl mx-auto">
                                     Tu perfil fue enviado exitosamente a{" "}
                                     <span className="font-semibold text-gray-800">{vacante?.empresa}</span>.
                                     La empresa recibirá una notificación y revisará tu candidatura.

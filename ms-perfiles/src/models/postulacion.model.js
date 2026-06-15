@@ -8,7 +8,8 @@ const pool = new Pool({
     password: process.env.DB_PASSWORD,
 });
 
-const ESTADOS_VALIDOS = ["enviada", "vista", "entrevista", "rechazada", "aceptada"];
+// Incluir los nuevos estados
+const ESTADOS_VALIDOS = ["enviada", "vista", "entrevista", "rechazada", "aceptada", "confirmada", "rechazada_por_estudiante"];
 
 const PostulacionModel = {
     // Estudiante: mis postulaciones
@@ -113,6 +114,14 @@ const PostulacionModel = {
                 estado,
                 created_at             AS fecha`,
             [postulacionId, estado]
+        );
+        return rows[0] || null;
+    },
+
+    async findById(id) {
+        const { rows } = await pool.query(
+            `SELECT id, vacante_id AS "vacanteId", estado FROM postulaciones WHERE id = $1 LIMIT 1`,
+            [id]
         );
         return rows[0] || null;
     },

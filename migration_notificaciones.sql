@@ -1,30 +1,30 @@
--- ═══════════════════════════════════════════════════════════
--- EmpleoUni — Migración: Notificaciones + vacante seleccionada
--- Ejecutar en la BD empleouni_perfiles
--- ═══════════════════════════════════════════════════════════
-
 \c empleouni_perfiles;
 
--- Columna: vacante seleccionada por el estudiante (la que más le gusta)
+-- 1. Columnas para favorita
 ALTER TABLE postulaciones
     ADD COLUMN IF NOT EXISTS es_favorita BOOLEAN NOT NULL DEFAULT FALSE;
 
--- Columna: marca si el estudiante ya fue contratado (tiene empresa)
+-- 2. Columnas para contratado
 ALTER TABLE perfiles
     ADD COLUMN IF NOT EXISTS contratado BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS empresa_contratante VARCHAR(150);
 
--- Tabla de notificaciones (para empresa y estudiante)
+-- 3. Tabla de notificaciones
 CREATE TABLE IF NOT EXISTS notificaciones (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     UUID        NOT NULL,         -- destinatario
-    tipo        VARCHAR(50) NOT NULL,          -- 'postulacion_nueva' | 'estado_cambiado' | 'contratado'
+    user_id     UUID        NOT NULL,
+    tipo        VARCHAR(50) NOT NULL,
     titulo      VARCHAR(200) NOT NULL,
     mensaje     TEXT        NOT NULL,
     leida       BOOLEAN     NOT NULL DEFAULT FALSE,
-    meta        JSONB,                         -- datos extras (vacanteId, postulacionId, etc.)
+    meta        JSONB,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_notificaciones_user  ON notificaciones(user_id);
+CREATE INDEX IF NOT EXISTS idx_notificaciones_user ON notificaciones(user_id);
 CREATE INDEX IF NOT EXISTS idx_notificaciones_leida ON notificaciones(user_id, leida);
+
+-- 4. ⭐ NUEVO: Permitir estados 'confirmada' y 'rechazada_por_estudiante'
+ALTER TABLE postulaciones DROP CONSTRAINT IF EXISTS postulaciones_estado_check;
+ALTER TABLE postulaciones ADD CONSTRAINT postulaciones_estado_check
+  CHECK (estado IN ('enviada','vista','entrevista','rechazada','aceptada','confirmada','rechazada_por_estudiante'));

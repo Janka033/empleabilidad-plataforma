@@ -1,5 +1,14 @@
 const PerfilModel = require("../models/perfil.model");
 
+const { Pool } = require("pg");
+const pool = new Pool({
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT || 5432,
+    database: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+});
+
 const asyncHandler = (fn) => (req, res, next) =>
     Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -125,5 +134,27 @@ const create = asyncHandler(async (req, res) => {
     const perfil = await PerfilModel.create({ userId: uid, nombre: nombre || req.user.email, email: email || req.user.email });
     return res.status(201).json(perfil);
 });
+const liberarEstudiante = asyncHandler(async (req, res) => {
+    if (req.user.rol !== "empresa") {
+        return res.status(403).json({ message: "Solo empresas pueden liberar" });
+    }
+    const { id } = req.params; // id del perfil del estudiante
+    const perfil = await PerfilModel.findById(id);
+    if (!perfil) return res.status(404).json({ message: "Perfil no encontrado" });
 
-module.exports = { getMe, getById, update, updateMe, create };
+    // Verificar que la empresa tiene derecho (empresa_contratante coincide con la empresa autenticada)
+    // Nota: req.user.nombre no está en el token JWT por defecto. Debes incluir el nombre de la empresa en el token al hacer login.
+    // Mientras tanto, puedes pasar el nombre de la empresa desde el frontend (menos seguro) o buscar la vacante asociada.
+    // Opción simple: que el frontend envíe el nombre de la empresa en el body.
+    const { empresaNombre } = req.body;
+    if (perfil.empresa_contratante !== empresaNombre) {
+        return res.status(403).json({ message: "No autorizado para liberar este estudiante" });
+    }
+
+    await pool.query(
+        `UPDATE perfiles SET contratado = FALSE, empresa_contratante = NULL WHERE id = $1`,
+        [id]
+    );
+    return res.json({ message: "Estudiante liberado, puede postularse nuevamente" });
+});
+module.exports = { getMe, getById, update, updateMe, create, liberarEstudiante };

@@ -22,10 +22,11 @@ const PostulacionModel = {
                 p.disponibilidad,
                 p.fecha_disponible     AS "fechaDisponible",
                 p.estado,
+                p.es_favorita          AS "esFavorita",
                 p.created_at           AS fecha
              FROM postulaciones p
              WHERE p.perfil_id = $1
-             ORDER BY p.created_at DESC`,
+             ORDER BY p.es_favorita DESC, p.created_at DESC`,
             [perfilId]
         );
         return rows;
@@ -50,7 +51,9 @@ const PostulacionModel = {
                 pf.programa,
                 pf.semestre,
                 pf.habilidades,
-                pf.completitud
+                pf.completitud,
+                pf.contratado,
+                pf.empresa_contratante AS "empresaContratante"
              FROM postulaciones p
              JOIN perfiles pf ON pf.id = p.perfil_id
              WHERE p.vacante_id = $1
@@ -58,6 +61,15 @@ const PostulacionModel = {
             [vacanteId]
         );
         return rows;
+    },
+
+    // Verificar doble postulación
+    async existsByPerfilAndVacante(perfilId, vacanteId) {
+        const { rows } = await pool.query(
+            `SELECT 1 FROM postulaciones WHERE perfil_id = $1 AND vacante_id = $2 LIMIT 1`,
+            [perfilId, vacanteId]
+        );
+        return rows.length > 0;
     },
 
     async create({ perfilId, vacanteId, cartaMotivacion, expectativaSalarial, disponibilidad }) {
@@ -77,13 +89,14 @@ const PostulacionModel = {
                 disponibilidad,
                 fecha_disponible       AS "fechaDisponible",
                 estado,
+                es_favorita            AS "esFavorita",
                 created_at             AS fecha`,
             [perfilId, vacanteId, cartaMotivacion, String(expectativaSalarial || ""), disponibilidad, fechaDisponible]
         );
         return rows[0];
     },
 
-    // Empresa: cambiar estado de una postulación
+    // Empresa: cambiar estado
     async updateEstado(postulacionId, estado) {
         if (!ESTADOS_VALIDOS.includes(estado)) return null;
 

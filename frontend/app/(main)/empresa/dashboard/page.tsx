@@ -16,6 +16,12 @@ interface Postulado {
     habilidades?: string[]; completitud: number;
     cartaMotivacion: string; expectativaSalarial: string;
     disponibilidad: string; estado: string; fecha: string;
+    contratado?: boolean; empresaContratante?: string;
+}
+interface Notificacion {
+    id: string; tipo: string; titulo: string;
+    mensaje: string; leida: boolean; created_at: string;
+    meta?: { vacanteId?: string; postulacionId?: string; estudianteNombre?: string };
 }
 
 const MODALIDADES = ["Presencial", "Remoto", "Híbrido"];
@@ -52,6 +58,11 @@ export default function EmpresaDashboard() {
     const [postuladosLoading,   setPostuladosLoading]   = useState(false);
     const [updatingEstado,      setUpdatingEstado]      = useState<Record<string, boolean>>({});
 
+    // Notificaciones
+    const [notificaciones,   setNotificaciones]   = useState<Notificacion[]>([]);
+    const [noLeidas,         setNoLeidas]         = useState(0);
+    const [showNotifPanel,   setShowNotifPanel]   = useState(false);
+
     const fetchVacantes = useCallback(async () => {
         const token = localStorage.getItem("token");
         if (!token) { router.push("/login"); return; }
@@ -62,6 +73,19 @@ export default function EmpresaDashboard() {
             setVacantes(data.vacantes || []);
         } catch {} finally { setLoading(false); }
     }, [router]);
+
+    const fetchNotificaciones = useCallback(async () => {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        try {
+            const r = await fetch(`${API_URLS.perfiles}/notificaciones`, { headers: authHeaders(token) });
+            if (r.ok) {
+                const d = await r.json();
+                setNotificaciones(d.notificaciones || []);
+                setNoLeidas(d.noLeidas || 0);
+            }
+        } catch {}
+    }, []);
 
     useEffect(() => {
         const token = localStorage.getItem("token");
@@ -75,7 +99,11 @@ export default function EmpresaDashboard() {
             setEmpresaNombre(user.nombre || "");
         } catch {}
         fetchVacantes();
-    }, [router, fetchVacantes]);
+        fetchNotificaciones();
+        // Poll cada 30 segundos
+        const interval = setInterval(fetchNotificaciones, 30000);
+        return () => clearInterval(interval);
+    }, [router, fetchVacantes, fetchNotificaciones]);
 
     const fetchPostulados = async (vacante: Vacante) => {
         setVacanteSeleccionada(vacante); setPostulados([]); setPostuladosLoading(true);
@@ -99,10 +127,36 @@ export default function EmpresaDashboard() {
             });
             if (res.ok) {
                 setPostulados((prev) => prev.map((p) => p.id === postulacionId ? { ...p, estado: nuevoEstado } : p));
+                // Si fue aceptado, marcar en la vista como contratado
+                if (nuevoEstado === "aceptada") {
+                    setPostulados((prev) => prev.map((p) =>
+                        p.id === postulacionId ? { ...p, estado: nuevoEstado, contratado: true, empresaContratante: empresaNombre } : p
+                    ));
+                }
             }
         } catch {} finally {
             setUpdatingEstado((prev) => ({ ...prev, [postulacionId]: false }));
         }
+    };
+
+    const handleMarcarNotifLeida = async (notifId: string) => {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        await fetch(`${API_URLS.perfiles}/notificaciones/${notifId}/leer`, {
+            method: "PATCH", headers: authHeaders(token),
+        });
+        setNotificaciones((prev) => prev.map((n) => n.id === notifId ? { ...n, leida: true } : n));
+        setNoLeidas((prev) => Math.max(0, prev - 1));
+    };
+
+    const handleMarcarTodasLeidas = async () => {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        await fetch(`${API_URLS.perfiles}/notificaciones/leer-todas`, {
+            method: "PATCH", headers: authHeaders(token),
+        });
+        setNotificaciones((prev) => prev.map((n) => ({ ...n, leida: true })));
+        setNoLeidas(0);
     };
 
     const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -142,7 +196,7 @@ export default function EmpresaDashboard() {
     return (
         <div className="min-h-screen bg-[#f8f9fb] flex flex-col">
 
-            {/* Navbar empresa */}
+            {/* Navbar */}
             <nav className="h-14 border-b border-gray-200 bg-white flex items-center justify-between px-8 fixed top-0 w-full z-50">
                 <div className="flex items-center gap-3">
                     <span className="text-base font-bold" style={{ color: "#0d1c32" }}>
@@ -153,13 +207,72 @@ export default function EmpresaDashboard() {
                         {empresaNombre || "Panel de Empresa"}
                     </span>
                 </div>
-                <button
-                    onClick={() => { localStorage.clear(); document.cookie = "token=; path=/; max-age=0"; router.push("/login"); }}
-                    className="text-sm font-semibold text-white px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
-                    style={{ backgroundColor: "#0d1c32" }}
-                >
-                    Cerrar sesión
-                </button>
+                <div className="flex items-center gap-3">
+                    {/* Campana notificaciones */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowNotifPanel((v) => !v)}
+                            className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-[22px] text-gray-600">notifications</span>
+                            {noLeidas > 0 && (
+                                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold text-white"
+                                      style={{ backgroundColor: "#f97316" }}>
+                                    {noLeidas > 9 ? "9+" : noLeidas}
+                                </span>
+                            )}
+                        </button>
+
+                        {showNotifPanel && (
+                            <div className="absolute right-0 top-12 w-96 bg-white rounded-2xl border border-gray-200 shadow-xl z-50 overflow-hidden">
+                                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                                    <h3 className="font-semibold text-gray-900 text-sm">Notificaciones</h3>
+                                    {noLeidas > 0 && (
+                                        <button onClick={handleMarcarTodasLeidas}
+                                                className="text-xs text-orange-500 hover:text-orange-600 font-medium">
+                                            Marcar todas leídas
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
+                                    {notificaciones.length === 0 ? (
+                                        <div className="flex flex-col items-center py-8 gap-2 text-gray-400">
+                                            <span className="material-symbols-outlined text-[32px]">notifications_none</span>
+                                            <p className="text-sm">Sin notificaciones</p>
+                                        </div>
+                                    ) : (
+                                        notificaciones.map((n) => (
+                                            <button key={n.id} onClick={() => handleMarcarNotifLeida(n.id)}
+                                                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${!n.leida ? "bg-orange-50" : ""}`}>
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                                                        <span className="material-symbols-outlined text-[16px] text-blue-600">person_add</span>
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className={`text-xs font-semibold ${!n.leida ? "text-gray-900" : "text-gray-600"}`}>{n.titulo}</p>
+                                                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.mensaje}</p>
+                                                        <p className="text-[10px] text-gray-400 mt-1">
+                                                            {new Date(n.created_at).toLocaleDateString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                                        </p>
+                                                    </div>
+                                                    {!n.leida && <div className="w-2 h-2 rounded-full mt-1 shrink-0" style={{ backgroundColor: "#f97316" }} />}
+                                                </div>
+                                            </button>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <button
+                        onClick={() => { localStorage.clear(); document.cookie = "token=; path=/; max-age=0"; router.push("/login"); }}
+                        className="text-sm font-semibold text-white px-4 py-2 rounded-lg hover:opacity-90"
+                        style={{ backgroundColor: "#0d1c32" }}
+                    >
+                        Cerrar sesión
+                    </button>
+                </div>
             </nav>
 
             <main className="flex-1 w-full max-w-6xl mx-auto px-4 md:px-8 pt-20 pb-12 flex flex-col gap-6">
@@ -172,7 +285,7 @@ export default function EmpresaDashboard() {
                     </div>
                     <button
                         onClick={() => { setForm({ ...EMPTY_FORM, empresa: empresaNombre }); setFormError(""); setShowForm(true); setVacanteSeleccionada(null); }}
-                        className="flex items-center gap-2 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity shadow-sm"
+                        className="flex items-center gap-2 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 shadow-sm"
                         style={{ backgroundColor: "#0d1c32" }}
                     >
                         <span className="material-symbols-outlined text-[18px]">add</span>
@@ -187,27 +300,25 @@ export default function EmpresaDashboard() {
                     </div>
                 )}
 
-                {/* Formulario */}
+                {/* Formulario nueva vacante */}
                 {showForm && (
                     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col gap-5">
                         <div className="flex items-center justify-between">
                             <h2 className="text-base font-bold text-gray-900">Publicar nueva vacante</h2>
-                            <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-700 transition-colors">
+                            <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-700">
                                 <span className="material-symbols-outlined">close</span>
                             </button>
                         </div>
-                        {formError && (
-                            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{formError}</div>
-                        )}
+                        {formError && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{formError}</div>}
                         <form onSubmit={handleCrearVacante} className="flex flex-col gap-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {[
-                                    { name: "titulo",     label: "Título del cargo",            placeholder: "Ej: Desarrollador Frontend Junior", req: true  },
-                                    { name: "empresa",    label: "Nombre de la empresa",        placeholder: "Ej: TechCorp S.A.S.",              req: true  },
-                                    { name: "ciudad",     label: "Ciudad",                      placeholder: "Ej: Armenia, Quindío",             req: true  },
-                                    { name: "area",       label: "Área",                        placeholder: "Ej: Tecnología",                   req: true  },
-                                    { name: "salario",    label: "Salario (opcional)",          placeholder: "Ej: $1.500.000 - $2.000.000",      req: false },
-                                    { name: "requisitos", label: "Requisitos (separados por ,)", placeholder: "Ej: React, Node.js, Git",         req: false },
+                                    { name: "titulo",     label: "Título del cargo",             placeholder: "Ej: Desarrollador Frontend Junior", req: true  },
+                                    { name: "empresa",    label: "Nombre de la empresa",         placeholder: "Ej: TechCorp S.A.S.",              req: true  },
+                                    { name: "ciudad",     label: "Ciudad",                       placeholder: "Ej: Armenia, Quindío",             req: true  },
+                                    { name: "area",       label: "Área",                         placeholder: "Ej: Tecnología",                   req: true  },
+                                    { name: "salario",    label: "Salario (opcional)",           placeholder: "Ej: $1.500.000 - $2.000.000",      req: false },
+                                    { name: "requisitos", label: "Requisitos (separados por ,)", placeholder: "Ej: React, Node.js, Git",          req: false },
                                 ].map((f) => (
                                     <div key={f.name} className="flex flex-col gap-1.5">
                                         <label className="text-sm font-semibold text-gray-700">
@@ -245,7 +356,7 @@ export default function EmpresaDashboard() {
                             </div>
                             <div className="flex justify-end gap-3 pt-1">
                                 <button type="button" onClick={() => setShowForm(false)}
-                                        className="px-5 py-2 text-sm border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">
+                                        className="px-5 py-2 text-sm border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50">
                                     Cancelar
                                 </button>
                                 <button type="submit" disabled={formLoading}
@@ -263,7 +374,7 @@ export default function EmpresaDashboard() {
                 {/* Grid principal */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-                    {/* ── Lista de vacantes ── */}
+                    {/* Lista de vacantes */}
                     <div className="flex flex-col gap-3">
                         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
                             Vacantes publicadas
@@ -299,9 +410,7 @@ export default function EmpresaDashboard() {
                                         </div>
                                         <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
                                             vac.activa ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"
-                                        }`}>
-                                            {vac.activa ? "Activa" : "Inactiva"}
-                                        </span>
+                                        }`}>{vac.activa ? "Activa" : "Inactiva"}</span>
                                     </div>
                                     <div className="flex flex-wrap gap-1.5">
                                         <span className="text-xs px-2 py-0.5 rounded-md bg-gray-100 text-gray-600">{vac.modalidad}</span>
@@ -316,7 +425,7 @@ export default function EmpresaDashboard() {
                         )}
                     </div>
 
-                    {/* ── Panel de candidatos ── */}
+                    {/* Panel candidatos */}
                     <div className="flex flex-col gap-3 lg:sticky lg:top-20">
                         {!vacanteSeleccionada ? (
                             <div className="bg-white rounded-2xl border border-dashed border-gray-300 flex flex-col items-center py-20 gap-3">
@@ -329,11 +438,10 @@ export default function EmpresaDashboard() {
                             <>
                                 <div className="flex items-center justify-between">
                                     <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                                        Candidatos:{" "}
-                                        <span className="text-gray-900 normal-case font-bold">{vacanteSeleccionada.titulo}</span>
+                                        Candidatos: <span className="text-gray-900 normal-case font-bold">{vacanteSeleccionada.titulo}</span>
                                     </h2>
                                     <button onClick={() => { setVacanteSeleccionada(null); setPostulados([]); }}
-                                            className="text-gray-400 hover:text-gray-700 transition-colors">
+                                            className="text-gray-400 hover:text-gray-700">
                                         <span className="material-symbols-outlined text-[20px]">close</span>
                                     </button>
                                 </div>
@@ -353,12 +461,11 @@ export default function EmpresaDashboard() {
                                             const eInfo = estadoStyle(p.estado);
                                             return (
                                                 <div key={p.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                                                    {/* Banda de color */}
                                                     <div className={`h-1 w-full ${
-                                                        p.estado === "aceptada" ? "bg-emerald-400" :
-                                                            p.estado === "rechazada" ? "bg-red-400" :
-                                                                p.estado === "entrevista" ? "bg-blue-400" :
-                                                                    p.estado === "vista" ? "bg-amber-400" :
+                                                        p.estado === "aceptada"   ? "bg-emerald-400" :
+                                                            p.estado === "rechazada"  ? "bg-red-400"     :
+                                                                p.estado === "entrevista" ? "bg-blue-400"    :
+                                                                    p.estado === "vista"      ? "bg-amber-400"   :
                                                                         "bg-gray-200"
                                                     }`} />
 
@@ -366,12 +473,19 @@ export default function EmpresaDashboard() {
                                                         {/* Cabecera candidato */}
                                                         <div className="flex items-start gap-3">
                                                             <div className="w-10 h-10 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
-                                                                <span className="font-bold text-gray-600 text-sm">
-                                                                    {p.nombre?.charAt(0).toUpperCase()}
-                                                                </span>
+                                                                <span className="font-bold text-gray-600 text-sm">{p.nombre?.charAt(0).toUpperCase()}</span>
                                                             </div>
                                                             <div className="flex-1 min-w-0">
-                                                                <p className="font-semibold text-gray-900 text-sm truncate">{p.nombre}</p>
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <p className="font-semibold text-gray-900 text-sm truncate">{p.nombre}</p>
+                                                                    {/* Badge "ya tiene empresa" */}
+                                                                    {p.contratado && (
+                                                                        <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                                                                            <span className="material-symbols-outlined text-[11px]">warning</span>
+                                                                            Ya tiene empresa
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                                 <p className="text-xs text-gray-500 truncate">{p.email}</p>
                                                             </div>
                                                         </div>
@@ -382,10 +496,10 @@ export default function EmpresaDashboard() {
                                                             <div className="relative flex-1">
                                                                 <select
                                                                     value={p.estado}
-                                                                    disabled={updatingEstado[p.id]}
+                                                                    disabled={updatingEstado[p.id] || p.contratado}
                                                                     onChange={(e) => handleCambiarEstado(p.id, e.target.value)}
                                                                     className={`w-full text-xs font-semibold pl-7 pr-6 py-1.5 rounded-full border-0 outline-none cursor-pointer appearance-none ${eInfo.style} ${
-                                                                        updatingEstado[p.id] ? "opacity-50 cursor-not-allowed" : ""
+                                                                        (updatingEstado[p.id] || p.contratado) ? "opacity-50 cursor-not-allowed" : ""
                                                                     }`}
                                                                 >
                                                                     {ESTADOS.map((s) => (
@@ -402,13 +516,13 @@ export default function EmpresaDashboard() {
                                                             </div>
                                                         </div>
 
-                                                        {/* Datos académicos — sin emojis */}
+                                                        {/* Datos académicos */}
                                                         <div className="grid grid-cols-2 gap-2">
                                                             {[
-                                                                { icon: "school",          val: p.universidad },
-                                                                { icon: "menu_book",       val: p.programa },
-                                                                { icon: "calendar_month",  val: p.semestre ? `Semestre ${p.semestre}` : null },
-                                                                { icon: "star",            val: `Perfil ${p.completitud}% completo` },
+                                                                { icon: "school",         val: p.universidad },
+                                                                { icon: "menu_book",      val: p.programa    },
+                                                                { icon: "calendar_month", val: p.semestre ? `Semestre ${p.semestre}` : null },
+                                                                { icon: "star",           val: `Perfil ${p.completitud}% completo` },
                                                             ].filter((r) => r.val).map(({ icon, val }) => (
                                                                 <div key={icon} className="flex items-center gap-1.5 text-xs text-gray-600">
                                                                     <span className="material-symbols-outlined text-[14px] text-gray-400">{icon}</span>
@@ -421,9 +535,7 @@ export default function EmpresaDashboard() {
                                                         {p.habilidades && p.habilidades.length > 0 && (
                                                             <div className="flex flex-wrap gap-1.5">
                                                                 {p.habilidades.map((h, i) => (
-                                                                    <span key={i} className="text-xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100">
-                                                                        {h}
-                                                                    </span>
+                                                                    <span key={i} className="text-xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100">{h}</span>
                                                                 ))}
                                                             </div>
                                                         )}
@@ -436,7 +548,7 @@ export default function EmpresaDashboard() {
                                                             </p>
                                                         </div>
 
-                                                        {/* Expectativa y disponibilidad — sin emojis */}
+                                                        {/* Detalles */}
                                                         <div className="flex flex-wrap gap-4 border-t border-gray-100 pt-3">
                                                             <div className="flex items-center gap-1.5 text-xs text-gray-600">
                                                                 <span className="material-symbols-outlined text-[14px] text-gray-400">payments</span>
@@ -453,9 +565,7 @@ export default function EmpresaDashboard() {
                                                         <p className="text-xs text-gray-400 flex items-center gap-1">
                                                             <span className="material-symbols-outlined text-[13px]">schedule</span>
                                                             Postulado el{" "}
-                                                            {new Date(p.fecha).toLocaleDateString("es-CO", {
-                                                                day: "2-digit", month: "long", year: "numeric",
-                                                            })}
+                                                            {new Date(p.fecha).toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric" })}
                                                         </p>
                                                     </div>
                                                 </div>

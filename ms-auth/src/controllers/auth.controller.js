@@ -24,25 +24,24 @@ const asyncHandler = (fn) => (req, res, next) =>
  *             type: object
  *             required: [nombre, email, password, rol]
  *             properties:
- *               nombre:     { type: string }
- *               email:      { type: string, format: email }
- *               password:   { type: string, minLength: 8 }
- *               rol:        { type: string, enum: [estudiante, empresa] }
+ *               nombre:      { type: string }
+ *               email:       { type: string, format: email }
+ *               password:    { type: string, minLength: 8 }
+ *               rol:         { type: string, enum: [estudiante, empresa] }
  *               universidad: { type: string }
- *               programa:   { type: string }
- *               semestre:   { type: number }
+ *               programa:    { type: string }
+ *               semestre:    { type: number }
  *               razonSocial: { type: string }
- *               nit:        { type: string }
+ *               nit:         { type: string }
  *     responses:
  *       201: { description: Usuario creado }
  *       400: { description: Datos inválidos }
  *       409: { description: Email ya registrado }
  */
 const register = asyncHandler(async (req, res) => {
-    // Extraer solo campos permitidos
-    const { nombre, email, password, rol } = req.body;
+    const { nombre, email, password, rol, razonSocial } = req.body;
 
-    if (!nombre || !email || !password || !rol) {
+    if (!email || !password || !rol) {
         return res.status(400).json({ message: "Todos los campos son obligatorios" });
     }
 
@@ -54,12 +53,21 @@ const register = asyncHandler(async (req, res) => {
         return res.status(400).json({ message: "La contraseña debe tener al menos 8 caracteres" });
     }
 
+    // Para empresas: usar razonSocial como nombre; para estudiantes: usar nombre
+    const nombreFinal = rol === "empresa"
+        ? (razonSocial || nombre || email)
+        : (nombre || email);
+
+    if (!nombreFinal) {
+        return res.status(400).json({ message: "Nombre o razón social es obligatorio" });
+    }
+
     if (await UserModel.emailExists(email)) {
         return res.status(409).json({ message: "El correo ya está registrado" });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await UserModel.create({ nombre, email, passwordHash, rol });
+    const user = await UserModel.create({ nombre: nombreFinal, email, passwordHash, rol });
 
     const token = jwt.sign(
         { id: user.id, email: user.email, rol: user.rol },

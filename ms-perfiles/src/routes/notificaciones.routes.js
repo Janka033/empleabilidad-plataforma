@@ -7,7 +7,6 @@ const router = Router();
 router.use(verifyToken);
 
 router.get("/",                   getMias);
-router.patch("/:id/leer",         marcarLeida);
-router.patch("/leer-todas",       marcarTodasLeidas);
-
+router.patch("/leer-todas", marcarTodasLeidas);
+router.patch("/:id/leer",   marcarLeida);
 module.exports = router;

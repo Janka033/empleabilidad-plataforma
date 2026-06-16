@@ -1,5 +1,5 @@
 "use client";
-
+import ConfirmModal from "../../../components/ui/ConfirmModal";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { API_URLS, authHeaders } from "../../../lib/api";
@@ -38,9 +38,6 @@ const ESTADOS = [
     { value: "vista",      label: "Vista",      style: "bg-amber-50 text-amber-700"     },
     { value: "entrevista", label: "En proceso", style: "bg-blue-50 text-blue-700"       },
     { value: "aceptada",   label: "Aceptada",   style: "bg-emerald-50 text-emerald-700" },
-    { value: "rechazada",  label: "Rechazada",  style: "bg-red-50 text-red-600"         },
-    { value: "confirmada", label: "Confirmada", style: "bg-purple-50 text-purple-700"   },
-    { value: "rechazada_por_estudiante", label: "Rechazada x estudiante", style: "bg-orange-50 text-orange-700" },
 ];
 const ESTADO_ICON: Record<string, string> = {
     enviada: "schedule", vista: "visibility", entrevista: "groups",
@@ -121,6 +118,9 @@ export default function EmpresaDashboard() {
     // Toasts
     const [toasts, setToasts] = useState<ToastMsg[]>([]);
     const toastId = useRef(0);
+    const [modalAceptar, setModalAceptar] = useState<{
+        postulacionId: string; nombre: string;
+    } | null>(null);
 
     const addToast = useCallback((msg: string, type: ToastType = "success") => {
         const id = ++toastId.current;
@@ -685,10 +685,25 @@ export default function EmpresaDashboard() {
                                                                         <select
                                                                             value={p.estado}
                                                                             disabled={updatingEstado[p.id] || isLocked}
-                                                                            onChange={(e) => handleCambiarEstado(p.id, e.target.value)}
+                                                                            onChange={(e) => {
+                                                                                const nuevoEstado = e.target.value;
+                                                                                if (nuevoEstado === "aceptada") {
+                                                                                    setModalAceptar({ postulacionId: p.id, nombre: p.nombre });
+                                                                                    return;
+                                                                                }
+                                                                                handleCambiarEstado(p.id, nuevoEstado);
+                                                                            }}
                                                                             className={`w-full text-xs font-semibold pl-7 pr-5 py-1.5 rounded-full border-0 cursor-pointer appearance-none ${eInfo.style} ${isLocked ? "opacity-60 cursor-not-allowed" : ""}`}
                                                                         >
-                                                                            {ESTADOS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                                                                            {/* Si el estado actual NO está en las 4 opciones, lo mostramos como opción deshabilitada */}
+                                                                            {!ESTADOS.find(s => s.value === p.estado) && (
+                                                                                <option value={p.estado} disabled>
+                                                                                    {estadoStyle(p.estado).label}
+                                                                                </option>
+                                                                            )}
+                                                                            {ESTADOS.map((s) => (
+                                                                                <option key={s.value} value={s.value}>{s.label}</option>
+                                                                            ))}
                                                                         </select>
                                                                         <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[13px] pointer-events-none">
                                       {ESTADO_ICON[p.estado] ?? "schedule"}
@@ -862,7 +877,6 @@ export default function EmpresaDashboard() {
                                     <button
                                         onClick={async () => {
                                             if (!candidatoDetalle.perfilId) { addToast("No se encontró el perfil", "error"); return; }
-                                            if (!confirm(`¿Liberar a ${candidatoDetalle.nombre} para que pueda postularse nuevamente?`)) return;
                                             const token = localStorage.getItem("token");
                                             if (!token) return;
                                             try {
@@ -898,6 +912,21 @@ export default function EmpresaDashboard() {
                     </div>
                 </div>
             )}
+            {/* ── Modal aceptar candidato ── */}
+            <ConfirmModal
+                show={!!modalAceptar}
+                tipo="warning"
+                titulo="Aceptar candidato"
+                mensaje={`¿Estas seguro de aceptar a ${modalAceptar?.nombre}? Se le notificara y podra confirmar su practica.`}
+                labelConfirm="Aceptar"
+                onConfirm={() => {
+                    if (modalAceptar) handleCambiarEstado(modalAceptar.postulacionId, "aceptada");
+                    setModalAceptar(null);
+                }}
+                onCancel={() => setModalAceptar(null)}
+            />
+
+
 
             {/* Footer */}
             <footer className="border-t border-gray-200 bg-white py-5 px-8 flex flex-col md:flex-row justify-between items-center gap-3 mt-auto">

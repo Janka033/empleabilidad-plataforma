@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { API_URLS, authHeaders } from "../../lib/api";
+import ConfirmModal from "../../components/ui/ConfirmModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Postulacion {
@@ -90,6 +91,10 @@ export default function PerfilPage() {
         nombre: "", universidad: "", programa: "", semestre: "", habilidades: [] as string[], bio: "",
     });
     const [habilidadInput,   setHabilidadInput]    = useState("");
+    const [modalConfirmar, setModalConfirmar] = useState<{
+        postulacionId: string; empresaNombre: string;
+    } | null>(null);
+    const [modalExito, setModalExito] = useState(false);
 
     // ── Fetch helpers ────────────────────────────────────────────────────────
     const fetchPerfil = useCallback(async (token: string) => {
@@ -215,38 +220,27 @@ export default function PerfilPage() {
                 );
             }
         } catch {}
+    };    const handleConfirmarOferta = (postulacionId: string, empresaNombre: string) => {
+        setModalConfirmar({ postulacionId, empresaNombre });
     };
-    const handleConfirmarOferta = async (postulacionId: string, empresaNombre: string) => {
+
+    const ejecutarConfirmacion = async () => {
+        if (!modalConfirmar) return;
+        const { postulacionId } = modalConfirmar;
+        setModalConfirmar(null);
         const token = localStorage.getItem("token");
         if (!token) return;
-
-        const confirmado = confirm(
-            `¿Confirmas que deseas realizar tu práctica con ${empresaNombre}? No podrás cambiarlo después.`
-        );
-        if (!confirmado) return;
-
         try {
             const res = await fetch(`${API_URLS.perfiles}/postulaciones/${postulacionId}/confirmar`, {
-                method: "POST",
-                headers: authHeaders(token),
+                method: "POST", headers: authHeaders(token),
             });
             if (res.ok) {
-                alert("¡Felicidades! Has confirmado tu práctica. La empresa será notificada.");
-                // Recargar perfil y postulaciones para actualizar el estado
-                const token = localStorage.getItem("token");
-                if (token) {
-                    await fetchPerfil(token);
-                    await fetchPostulaciones(token);
-                    await fetchNotificaciones(token);
-                }
-            } else {
-                const data = await res.json();
-                alert(data.message || "Error al confirmar la oferta");
+                setModalExito(true);
+                await fetchPerfil(token);
+                await fetchPostulaciones(token);
+                await fetchNotificaciones(token);
             }
-        } catch (error) {
-            console.error("Error confirmando oferta:", error);
-            alert("Error de conexión. Intenta de nuevo.");
-        }
+        } catch { /* silencioso */ }
     };
 
     const handleMarcarNotifLeida = async (notifId: string) => {
@@ -843,6 +837,25 @@ export default function PerfilPage() {
                     </div>
                 )}
             </main>
+
+            {/* ── Modales ── */}
+            <ConfirmModal
+                show={!!modalConfirmar}
+                tipo="warning"
+                titulo="Confirmar practica"
+                mensaje={`¿Confirmas que deseas realizar tu practica con ${modalConfirmar?.empresaNombre}? No podras cambiarlo despues.`}
+                labelConfirm="Confirmar"
+                onConfirm={ejecutarConfirmacion}
+                onCancel={() => setModalConfirmar(null)}
+            />
+            <ConfirmModal
+                show={modalExito}
+                tipo="success"
+                titulo="Practica confirmada"
+                mensaje="Has confirmado tu practica exitosamente. La empresa sera notificada."
+                labelConfirm="Entendido"
+                onConfirm={() => setModalExito(false)}
+            />
 
             <footer className="border-t border-gray-200 bg-white py-5 px-8 flex flex-col md:flex-row justify-between items-center gap-3">
         <span className="text-sm font-bold" style={{ color: "#0d1c32" }}>

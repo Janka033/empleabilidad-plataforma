@@ -50,8 +50,8 @@ function PantallaContratado({ empresa, onBack }: { empresa: string; onBack: () =
           Empleo<span style={{ color: "#f97316" }}>Uni</span>
         </span>
             </nav>
-            <div className="flex-1 flex items-center justify-center px-4 pt-14">
-                <div className="w-full max-w-md bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "56px 16px 0" }}>
+                <div style={{ width: "100%", maxWidth: "448px" }} className="bg-white rounded-2xl border border-blue-200 shadow-sm overflow-hidden">
                     <div className="h-2 w-full bg-amber-400" />
                     <div className="p-8 flex flex-col items-center text-center gap-5">
                         <div className="w-16 h-16 rounded-full bg-amber-50 border-4 border-amber-100 flex items-center justify-center">

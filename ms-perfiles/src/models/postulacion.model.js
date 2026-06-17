@@ -46,6 +46,7 @@ const PostulacionModel = {
                 p.estado,
                 p.created_at           AS fecha,
                 pf.id                  AS "perfilId",
+                pf.user_id             AS "userId",
                 pf.nombre,
                 pf.email,
                 pf.universidad,
@@ -54,7 +55,9 @@ const PostulacionModel = {
                 pf.habilidades,
                 pf.completitud,
                 pf.contratado,
-                pf.empresa_contratante AS "empresaContratante"
+                pf.empresa_contratante AS "empresaContratante",
+                pf.linkedin_url        AS "linkedinUrl",
+                pf.cv_url              AS "cvUrl"
              FROM postulaciones p
              JOIN perfiles pf ON pf.id = p.perfil_id
              WHERE p.vacante_id = $1

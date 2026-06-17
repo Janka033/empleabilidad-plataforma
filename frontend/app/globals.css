@@ -43,10 +43,23 @@
   --font-inter: "Inter", sans-serif;
 }
 
+html, body {
+  /* Evita scroll/desbordamiento horizontal en móvil sin romper position:sticky */
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 body {
-  color: #1b1b1d;
-  background: #fbf9fb;
+  color: #1e293b;
+  background: #f8fafc;
   font-family: var(--font-inter);
+  /* Permite que palabras/URLs largas se rompan en lugar de desbordar */
+  overflow-wrap: break-word;
+}
+
+/* Tipografía profesional: títulos en Space Grotesk en toda la app */
+h1, h2, h3, h4 {
+  font-family: "Space Grotesk", var(--font-inter);
 }
 
 .bg-navy { background-color: #0d1c32; }

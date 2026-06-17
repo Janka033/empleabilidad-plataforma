@@ -103,6 +103,41 @@ const VacanteModel = {
         );
         return rows[0] || null;
     },
+
+    // Vacantes de una empresa, en todos los estados (activas e inactivas)
+    async findByEmpresaId(empresaId) {
+        const { rows } = await pool.query(
+            "SELECT * FROM vacantes WHERE empresa_id = $1 ORDER BY created_at DESC",
+            [empresaId]
+        );
+        return rows;
+    },
+
+    // Activar / desactivar una vacante
+    async setActiva(id, activa) {
+        const { rows } = await pool.query(
+            "UPDATE vacantes SET activa = $2, updated_at = NOW() WHERE id = $1 RETURNING *",
+            [id, activa]
+        );
+        return rows[0] || null;
+    },
+
+    // Buscar varias vacantes por IDs, preservando el orden recibido (relevancia ES)
+    async findByIds(ids) {
+        if (!ids.length) return [];
+        const { rows } = await pool.query(
+            "SELECT * FROM vacantes WHERE id = ANY($1)",
+            [ids]
+        );
+        const porId = new Map(rows.map((r) => [r.id, r]));
+        return ids.map((id) => porId.get(id)).filter(Boolean);
+    },
+
+    // Todas las vacantes (para reindexar en ElasticSearch al arrancar)
+    async findAllForIndex() {
+        const { rows } = await pool.query("SELECT * FROM vacantes");
+        return rows;
+    },
 };
 
 module.exports = VacanteModel;

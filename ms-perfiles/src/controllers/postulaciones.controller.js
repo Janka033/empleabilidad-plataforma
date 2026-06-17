@@ -1,6 +1,7 @@
 const PerfilModel         = require("../models/perfil.model");
 const PostulacionModel    = require("../models/postulacion.model");
 const NotificacionModel   = require("../models/notificacion.model");
+const { notificarUsuario } = require("../services/notificador.service");
 const { Pool }            = require("pg");
 
 const pool = new Pool({
@@ -13,6 +14,19 @@ const pool = new Pool({
 
 const asyncHandler = (fn) => (req, res, next) =>
     Promise.resolve(fn(req, res, next)).catch(next);
+
+const AUDIT_URL = process.env.AUDIT_SERVICE_URL || "http://ms-audit:3007";
+const AUTH_URL = process.env.AUTH_SERVICE_URL || "http://ms-auth:3001";
+const VACANTES_URL = process.env.VACANTES_SERVICE_URL || "http://ms-vacantes:3003";
+
+// Registra un evento de auditoría (best-effort) — RF19
+function auditar(authHeader, evento) {
+    fetch(`${AUDIT_URL}/audit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: authHeader },
+        body: JSON.stringify(evento),
+    }).catch(() => {});
+}
 
 const ESTADOS_VALIDOS = ["enviada", "vista", "entrevista", "rechazada", "aceptada", "confirmada", "rechazada_por_estudiante"];
 
@@ -77,12 +91,13 @@ const createPostulacion = asyncHandler(async (req, res) => {
         });
         if (vRes.ok) {
             const vacante = await vRes.json();
-            await NotificacionModel.create({
+            await notificarUsuario({
                 userId:  vacante.empresa_id,
                 tipo:    "postulacion_nueva",
                 titulo:  "Nueva postulación recibida",
                 mensaje: `${perfil.nombre} se postuló a "${vacante.titulo}"`,
                 meta:    { vacanteId, postulacionId: postulacion.id, estudianteNombre: perfil.nombre },
+                authHeader: req.headers["authorization"],
             });
         }
     } catch (_) { /* best-effort */ }
@@ -101,8 +116,8 @@ const getPostuladosByVacante = asyncHandler(async (req, res) => {
 
 // PATCH /postulaciones/:id/estado — empresa cambia estado
 const updateEstado = asyncHandler(async (req, res) => {
-    if (req.user.rol !== "empresa") {
-        return res.status(403).json({ message: "Solo las empresas pueden cambiar el estado" });
+    if (req.user.rol !== "empresa" && req.user.rol !== "admin") {
+        return res.status(403).json({ message: "No autorizado para cambiar el estado" });
     }
 
     const { id } = req.params;
@@ -141,12 +156,13 @@ const updateEstado = asyncHandler(async (req, res) => {
 
             // Notificar al estudiante del cambio de estado
             const estadoLabel = ESTADO_LABELS[estado] || estado;
-            await NotificacionModel.create({
+            await notificarUsuario({
                 userId:  user_id,
                 tipo:    "estado_cambiado",
                 titulo:  `Tu postulación fue ${estadoLabel}`,
                 mensaje: `El estado de tu postulación cambió a: ${estadoLabel.toUpperCase()}`,
                 meta:    { postulacionId: id, estado, vacanteId: postulacion.vacanteId },
+                authHeader: req.headers["authorization"],
             });
 
             // Si fue aceptada → notificar oferta (sin contratar aún)
@@ -167,12 +183,13 @@ const updateEstado = asyncHandler(async (req, res) => {
                 }
 
                 // Notificación de oferta (el estudiante decidirá después)
-                await NotificacionModel.create({
+                await notificarUsuario({
                     userId: user_id,
                     tipo: "oferta_recibida",
                     titulo: "¡Oferta recibida!",
                     mensaje: `${empresaNombre} te ha aceptado. Revisa tu panel y confirma si deseas realizar tu práctica con ellos.`,
                     meta: { postulacionId: id, estado, vacanteId: postulacion.vacanteId },
+                    authHeader: req.headers["authorization"],
                 });
             }
         }
@@ -268,14 +285,23 @@ const confirmarAceptacion = asyncHandler(async (req, res) => {
 
         // Notificar a la empresa (si tenemos empresaId)
         if (empresaId) {
-            await NotificacionModel.create({
+            await notificarUsuario({
                 userId: empresaId,
                 tipo: "confirmacion_estudiante",
                 titulo: "Estudiante confirmó su práctica",
                 mensaje: `${postulacion.estudiante_nombre} ha aceptado realizar su práctica en ${empresaNombre}.`,
                 meta: { postulacionId: id, vacanteId: postulacion.vacante_id },
+                authHeader: req.headers["authorization"],
             });
         }
+
+        auditar(req.headers["authorization"], {
+            servicio: "perfiles",
+            accion: "confirmar_practica",
+            entidad: "postulacion",
+            entidadId: id,
+            detalle: `${postulacion.estudiante_nombre} confirmó su práctica con ${empresaNombre}`,
+        });
 
         return res.json({ message: "Práctica confirmada exitosamente" });
     } catch (err) {
@@ -285,6 +311,81 @@ const confirmarAceptacion = asyncHandler(async (req, res) => {
     } finally {
         client.release();
     }
+});
+
+// POST /postulaciones/:id/solicitar-contratacion — la empresa decide contratar.
+// No contrata directamente: marca la postulación como "aceptada" y NOTIFICA A LA
+// COORDINADORA para que sea ella quien formalice el convenio.
+const solicitarContratacion = asyncHandler(async (req, res) => {
+    if (req.user.rol !== "empresa") {
+        return res.status(403).json({ message: "Solo las empresas pueden solicitar contratación" });
+    }
+
+    const { id } = req.params;
+    const { rows } = await pool.query(
+        `SELECT po.*, pf.user_id, pf.id AS perfil_id, pf.nombre AS estudiante_nombre
+         FROM postulaciones po
+         JOIN perfiles pf ON pf.id = po.perfil_id
+         WHERE po.id = $1`,
+        [id]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Postulación no encontrada" });
+    const post = rows[0];
+
+    if (post.estado === "confirmada") {
+        return res.status(400).json({ message: "El estudiante ya confirmó esta práctica" });
+    }
+
+    // Marcar como aceptada (sin notificar aún al estudiante; lo hará la coordinadora)
+    await pool.query("UPDATE postulaciones SET estado = 'aceptada' WHERE id = $1", [id]);
+
+    // Datos de la vacante (empresa, título)
+    let vacanteTitulo = "", empresaNombre = "la empresa", empresaId = req.user.id;
+    try {
+        const vRes = await fetch(`${VACANTES_URL}/vacantes/${post.vacante_id}`, {
+            headers: { Authorization: req.headers["authorization"] },
+        });
+        if (vRes.ok) {
+            const v = await vRes.json();
+            vacanteTitulo = v.titulo; empresaNombre = v.empresa; empresaId = v.empresa_id;
+        }
+    } catch (_) { /* best-effort */ }
+
+    // Resolver la coordinadora (admin) y notificarla
+    try {
+        const cRes = await fetch(`${AUTH_URL}/auth/coordinador`, {
+            headers: { Authorization: req.headers["authorization"] },
+        });
+        if (cRes.ok) {
+            const coord = await cRes.json();
+            await NotificacionModel.create({
+                userId:  coord.id,
+                tipo:    "solicitud_convenio",
+                titulo:  "Solicitud de contratación",
+                mensaje: `${empresaNombre} desea contratar a ${post.estudiante_nombre} para "${vacanteTitulo}". Crea el convenio de práctica.`,
+                meta: {
+                    estudianteUserId:   post.user_id,
+                    estudiantePerfilId: post.perfil_id,
+                    estudianteNombre:   post.estudiante_nombre,
+                    vacanteId:          post.vacante_id,
+                    vacanteTitulo,
+                    empresaId,
+                    empresaNombre,
+                    postulacionId:      id,
+                },
+            });
+        }
+    } catch (_) { /* best-effort */ }
+
+    auditar(req.headers["authorization"], {
+        servicio: "perfiles",
+        accion: "solicitar_contratacion",
+        entidad: "postulacion",
+        entidadId: id,
+        detalle: `${empresaNombre} solicitó contratar a ${post.estudiante_nombre}`,
+    });
+
+    return res.json({ message: "Solicitud enviada a la coordinadora académica" });
 });
 
 // PATCH /postulaciones/:id/favorita — estudiante marca vacante favorita
@@ -338,6 +439,7 @@ module.exports = {
     createPostulacion,
     getPostuladosByVacante,
     updateEstado,
-    confirmarAceptacion,  // << nuevo
+    confirmarAceptacion,
+    solicitarContratacion,
     marcarFavorita,
 };

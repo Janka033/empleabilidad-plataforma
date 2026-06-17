@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { API_URLS } from "../../lib/api";
+import { saveSession } from "../../lib/auth";
+import GoogleButton from "../../components/GoogleButton";
 
 type UserRole = "estudiante" | "empresa";
 
@@ -20,43 +22,15 @@ interface RegisterForm {
     nit?: string;
 }
 
-const UNIVERSIDADES = [
-    "Corporación Universitaria Alexander von Humboldt",
-    "Universidad del Quindío",
-    "Universidad La Gran Colombia",
-    "SENA",
-    "Otra",
-];
+const heading = { fontFamily: "'Space Grotesk', 'Inter', sans-serif" } as const;
+const NAVY = "#0d1c32";
+const ORANGE = "#f97316";
 
-const PROGRAMAS = [
-    "Ingeniería de Software",
-    "Ingeniería de Sistemas",
-    "Administración de Empresas",
-    "Diseño Gráfico",
-    "Contaduría Pública",
-    "Derecho",
-    "Otro",
-];
+const UNIVERSIDAD_FIJA = "Corporación Universitaria Alexander von Humboldt";
+const PROGRAMA_FIJO = "Ingeniería de Software";
+const SEMESTRES = [4, 5, 6, 7, 8];
 
-const inputStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "12px 16px",
-    backgroundColor: "white",
-    border: "1px solid #c5c6cd",
-    borderRadius: "8px",
-    fontSize: "14px",
-    color: "#1b1b1d",
-    boxSizing: "border-box",
-    outline: "none",
-};
-
-const labelStyle: React.CSSProperties = {
-    display: "block",
-    fontSize: "14px",
-    fontWeight: "600",
-    color: "#1b1b1d",
-    marginBottom: "6px",
-};
+const inputCls = "px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-500 transition";
 
 export default function RegisterPage() {
     const router = useRouter();
@@ -66,7 +40,7 @@ export default function RegisterPage() {
 
     const [formData, setFormData] = useState<RegisterForm>({
         nombre: "", email: "", password: "", confirmPassword: "",
-        rol: "estudiante", universidad: "", programa: "", semestre: "",
+        rol: "estudiante", universidad: UNIVERSIDAD_FIJA, programa: PROGRAMA_FIJO, semestre: "",
         razonSocial: "", nit: "",
     });
 
@@ -102,8 +76,8 @@ export default function RegisterPage() {
             });
             const data = await res.json();
             if (!res.ok) { setError(data.message || "Error al registrarse"); return; }
-            localStorage.setItem("token", data.token);
-            router.push("/vacantes");
+            saveSession(data.token, data.role, data.user);
+            router.push(data.role === "empresa" ? "/empresa/dashboard" : "/perfil");
         } catch {
             setError("Error de conexión. Intenta de nuevo.");
         } finally {
@@ -111,210 +85,159 @@ export default function RegisterPage() {
         }
     };
 
-    const stepTitles = ["Crear cuenta", "Datos de acceso", "Información de perfil"];
+    const stepTitles = ["Elige tu rol", "Crea tu cuenta", "Completa tu perfil"];
+    const stepLabels = ["Rol", "Cuenta", "Perfil"];
 
     return (
-        <div style={{ display: "flex", minHeight: "100vh" }}>
-
-            {/* Panel izquierdo — navy */}
-            <div style={{ width: "50%", backgroundColor: "#0d1c32", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "48px", position: "relative", overflow: "hidden" }}
-                 className="hidden lg:flex">
-                <div style={{ position: "absolute", top: 0, right: 0, width: "384px", height: "384px", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: "9999px", transform: "translate(50%,-50%)" }} />
-                <div style={{ position: "absolute", bottom: 0, left: 0, width: "256px", height: "256px", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: "9999px", transform: "translate(-50%,50%)" }} />
-
-                <div style={{ position: "relative", zIndex: 10 }}>
-          <span style={{ color: "white", fontSize: "24px", fontWeight: "700" }}>
-            Empleo<span style={{ color: "#f97316" }}>Uni</span>
-          </span>
-                    <p style={{ color: "#b9c7e4", fontSize: "14px", marginTop: "4px" }}>Plataforma de empleabilidad universitaria</p>
-                </div>
-
-                <div style={{ position: "relative", zIndex: 10 }}>
-                    {/* Steps */}
-                    <div style={{ marginBottom: "40px" }}>
-                        <div style={{ display: "flex", alignItems: "center" }}>
-                            {[1, 2, 3].map((s) => (
-                                <div key={s} style={{ display: "flex", alignItems: "center" }}>
-                                    <div style={{
-                                        width: "32px", height: "32px", borderRadius: "9999px",
-                                        display: "flex", alignItems: "center", justifyContent: "center",
-                                        fontSize: "12px", fontWeight: "700",
-                                        backgroundColor: s < step ? "#f97316" : s === step ? "white" : "rgba(255,255,255,0.2)",
-                                        color: s < step ? "white" : s === step ? "#0d1c32" : "rgba(255,255,255,0.5)",
-                                    }}>
-                                        {s < step ? "✓" : s}
-                                    </div>
-                                    {s < 3 && (
-                                        <div style={{ height: "2px", width: "48px", backgroundColor: s < step ? "#f97316" : "rgba(255,255,255,0.2)" }} />
-                                    )}
+        <div className="min-h-screen flex bg-slate-50">
+            {/* Panel de marca */}
+            <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden"
+                 style={{ background: `linear-gradient(160deg, ${NAVY} 0%, #16284a 60%, #1b3a6b 100%)` }}>
+                <div className="absolute bottom-0 left-0 w-80 h-80 rounded-full opacity-10" style={{ background: ORANGE, transform: "translate(-40%,40%)" }} />
+                <Link href="/" className="relative text-2xl font-bold text-white" style={heading}>
+                    Empleo<span style={{ color: ORANGE }}>Uni</span>
+                </Link>
+                <div className="relative">
+                    {/* Stepper */}
+                    <div className="flex items-center mb-8">
+                        {[1, 2, 3].map((s) => (
+                            <div key={s} className="flex items-center">
+                                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors"
+                                     style={{ backgroundColor: s < step ? ORANGE : s === step ? "#fff" : "rgba(255,255,255,0.15)", color: s < step ? "#fff" : s === step ? NAVY : "rgba(255,255,255,0.5)", ...heading }}>
+                                    {s < step ? "✓" : s}
                                 </div>
-                            ))}
-                        </div>
-                        <div style={{ display: "flex", gap: "40px", marginTop: "8px" }}>
-                            {["Rol", "Cuenta", "Perfil"].map((label, i) => (
-                                <span key={label} style={{ fontSize: "12px", color: i + 1 <= step ? "white" : "rgba(255,255,255,0.4)" }}>
-                  {label}
-                </span>
-                            ))}
-                        </div>
+                                {s < 3 && <div className="w-12 h-0.5" style={{ backgroundColor: s < step ? ORANGE : "rgba(255,255,255,0.15)" }} />}
+                            </div>
+                        ))}
                     </div>
-
-                    <h2 style={{ color: "white", fontSize: "30px", fontWeight: "700", lineHeight: "1.2", marginBottom: "16px" }}>
-                        {step === 1 && <>Elige cómo<br /><span style={{ color: "#f97316" }}>participas.</span></>}
-                        {step === 2 && <>Crea tu<br /><span style={{ color: "#f97316" }}>cuenta.</span></>}
-                        {step === 3 && <>Completa<br />tu <span style={{ color: "#f97316" }}>{formData.rol === "estudiante" ? "perfil." : "empresa."}</span></>}
-                    </h2>
-                    <p style={{ color: "#76849f", fontSize: "14px", lineHeight: "1.6", maxWidth: "320px" }}>
-                        {step === 1 && "¿Eres estudiante buscando oportunidades o empresa buscando talento?"}
-                        {step === 2 && "Tu email y contraseña para acceder a la plataforma."}
+                    <div className="flex gap-10 mb-8">
+                        {stepLabels.map((l, i) => (
+                            <span key={l} className="text-xs" style={{ color: i + 1 <= step ? "#fff" : "rgba(255,255,255,0.4)" }}>{l}</span>
+                        ))}
+                    </div>
+                    <h1 className="text-4xl font-bold text-white leading-tight mb-3" style={heading}>
+                        {step === 1 && <>¿Cómo<br /><span style={{ color: ORANGE }}>participas?</span></>}
+                        {step === 2 && <>Crea tu<br /><span style={{ color: ORANGE }}>cuenta.</span></>}
+                        {step === 3 && <>Completa tu<br /><span style={{ color: ORANGE }}>{formData.rol === "estudiante" ? "perfil." : "empresa."}</span></>}
+                    </h1>
+                    <p className="text-slate-300 max-w-[28rem] leading-relaxed">
+                        {step === 1 && "¿Eres estudiante buscando práctica o empresa buscando talento?"}
+                        {step === 2 && "Tu correo y contraseña para acceder a la plataforma."}
                         {step === 3 && formData.rol === "estudiante" && "Información académica para encontrar vacantes compatibles con tu perfil."}
-                        {step === 3 && formData.rol === "empresa" && "Datos de tu organización para publicar vacantes y prácticas."}
+                        {step === 3 && formData.rol === "empresa" && "Datos de tu organización para publicar vacantes."}
                     </p>
                 </div>
-
-                <div style={{ position: "relative", zIndex: 10 }}>
-                    <p style={{ color: "#44474d", fontSize: "12px" }}>© 2025 EmpleoUni — CUE Armenia, Quindío</p>
-                </div>
+                <p className="relative text-xs text-slate-500">© 2026 EmpleoUni — CUE Alexander von Humboldt</p>
             </div>
 
-            {/* Panel derecho — formulario */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", backgroundColor: "#fbf9fb", padding: "48px 24px" }}>
-                <div style={{ width: "100%", maxWidth: "448px" }}>
-
-                    <div style={{ marginBottom: "32px" }}>
-                        <h1 style={{ fontSize: "24px", fontWeight: "700", color: "#1b1b1d" }}>{stepTitles[step - 1]}</h1>
-                        <p style={{ color: "#44474d", fontSize: "14px", marginTop: "4px" }}>
+            {/* Formulario */}
+            <div className="flex-1 flex flex-col justify-center items-center px-6 py-12">
+                <div className="w-full max-w-[28rem]">
+                    <Link href="/" className="lg:hidden block text-2xl font-bold mb-6 text-center" style={{ ...heading, color: NAVY }}>
+                        Empleo<span style={{ color: ORANGE }}>Uni</span>
+                    </Link>
+                    <div className="mb-7">
+                        <h2 className="text-2xl font-bold text-slate-900" style={heading}>{stepTitles[step - 1]}</h2>
+                        <p className="text-slate-500 text-sm mt-1">
                             ¿Ya tienes cuenta?{" "}
-                            <Link href="/login" style={{ color: "#0d1c32", fontWeight: "600", textDecoration: "none" }}>Inicia sesión</Link>
+                            <Link href="/login" className="font-semibold hover:underline" style={{ color: NAVY }}>Inicia sesión</Link>
                         </p>
                     </div>
 
                     {/* PASO 1 */}
                     {step === 1 && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                            <p style={{ fontSize: "14px", fontWeight: "600", color: "#1b1b1d" }}>Soy...</p>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                        <div className="flex flex-col gap-4">
+                            <div className="grid grid-cols-2 gap-3">
                                 {(["estudiante", "empresa"] as UserRole[]).map((rol) => (
                                     <button key={rol} type="button" onClick={() => setFormData({ ...formData, rol })}
-                                            style={{
-                                                padding: "20px", borderRadius: "12px", textAlign: "left", cursor: "pointer",
-                                                border: formData.rol === rol ? "2px solid #0d1c32" : "2px solid #c5c6cd",
-                                                backgroundColor: formData.rol === rol ? "rgba(13,28,50,0.05)" : "white",
-                                            }}>
-                                        <div style={{ fontSize: "24px", marginBottom: "8px" }}>{rol === "estudiante" ? "🎓" : "🏢"}</div>
-                                        <p style={{ fontWeight: "600", fontSize: "14px", textTransform: "capitalize", color: formData.rol === rol ? "#0d1c32" : "#1b1b1d", margin: 0 }}>{rol}</p>
-                                        <p style={{ fontSize: "12px", color: "#44474d", marginTop: "2px" }}>
-                                            {rol === "estudiante" ? "Busco prácticas y empleos" : "Publico vacantes"}
-                                        </p>
+                                            className={`p-5 rounded-2xl text-left transition-all border-2 ${formData.rol === rol ? "bg-slate-50" : "bg-white hover:border-slate-300 border-slate-200"}`}
+                                            style={formData.rol === rol ? { borderColor: NAVY } : {}}>
+                                        <span className="material-symbols-outlined text-[28px] mb-2" style={{ color: formData.rol === rol ? ORANGE : "#94a3b8" }}>
+                                            {rol === "estudiante" ? "school" : "business"}
+                                        </span>
+                                        <p className="font-bold text-sm text-slate-900 capitalize">{rol}</p>
+                                        <p className="text-xs text-slate-500 mt-0.5">{rol === "estudiante" ? "Busco práctica" : "Publico vacantes"}</p>
                                     </button>
                                 ))}
                             </div>
                             <button type="button" onClick={() => setStep(2)}
-                                    style={{ width: "100%", padding: "12px 16px", backgroundColor: "#0d1c32", color: "white", fontWeight: "600", fontSize: "14px", borderRadius: "8px", border: "none", cursor: "pointer", marginTop: "8px" }}>
+                                    className="w-full py-3 rounded-xl text-white font-semibold text-sm hover:opacity-90 transition-opacity" style={{ backgroundColor: NAVY }}>
                                 Continuar
                             </button>
+                            <GoogleButton rol={formData.rol} />
                         </div>
                     )}
 
                     {/* PASO 2 */}
                     {step === 2 && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                        <div className="flex flex-col gap-4">
                             {[
-                                { id: "nombre", label: "Nombre completo", type: "text", placeholder: "Juan Pérez" },
-                                { id: "email", label: "Correo electrónico", type: "email", placeholder: "tu@correo.com" },
-                                { id: "password", label: "Contraseña", type: "password", placeholder: "Mínimo 8 caracteres" },
-                                { id: "confirmPassword", label: "Confirmar contraseña", type: "password", placeholder: "Repite tu contraseña" },
-                            ].map(({ id, label, type, placeholder }) => (
-                                <div key={id}>
-                                    <label style={labelStyle}>{label}</label>
-                                    <input id={id} name={id} type={type} required placeholder={placeholder}
-                                           value={formData[id as keyof RegisterForm] as string}
-                                           onChange={handleChange} style={inputStyle} />
+                                { id: "nombre", label: "Nombre completo", type: "text", ph: "Juan Pérez" },
+                                { id: "email", label: "Correo electrónico", type: "email", ph: "tu@correo.com" },
+                                { id: "password", label: "Contraseña", type: "password", ph: "Mínimo 8 caracteres" },
+                                { id: "confirmPassword", label: "Confirmar contraseña", type: "password", ph: "Repite tu contraseña" },
+                            ].map(({ id, label, type, ph }) => (
+                                <div key={id} className="flex flex-col gap-1.5">
+                                    <label className="text-sm font-semibold text-slate-700">{label}</label>
+                                    <input id={id} name={id} type={type} required placeholder={ph}
+                                           value={formData[id as keyof RegisterForm] as string} onChange={handleChange} className={inputCls} />
                                 </div>
                             ))}
-
-                            {error && (
-                                <div style={{ backgroundColor: "#ffdad6", border: "1px solid rgba(186,26,26,0.3)", borderRadius: "8px", padding: "12px 16px" }}>
-                                    <p style={{ color: "#93000a", fontSize: "14px", margin: 0 }}>{error}</p>
-                                </div>
-                            )}
-
-                            <div style={{ display: "flex", gap: "12px" }}>
-                                <button type="button" onClick={() => setStep(1)}
-                                        style={{ flex: 1, padding: "12px 16px", backgroundColor: "white", color: "#1b1b1d", fontWeight: "600", fontSize: "14px", borderRadius: "8px", border: "1px solid #c5c6cd", cursor: "pointer" }}>
-                                    Atrás
-                                </button>
-                                <button type="button" onClick={handleNext}
-                                        style={{ flex: 1, padding: "12px 16px", backgroundColor: "#0d1c32", color: "white", fontWeight: "600", fontSize: "14px", borderRadius: "8px", border: "none", cursor: "pointer" }}>
-                                    Continuar
-                                </button>
+                            {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>}
+                            <div className="flex gap-3">
+                                <button type="button" onClick={() => setStep(1)} className="flex-1 py-3 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50">Atrás</button>
+                                <button type="button" onClick={handleNext} className="flex-1 py-3 rounded-xl text-white font-semibold text-sm hover:opacity-90" style={{ backgroundColor: NAVY }}>Continuar</button>
                             </div>
                         </div>
                     )}
 
                     {/* PASO 3 */}
                     {step === 3 && (
-                        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                             {formData.rol === "estudiante" ? (
                                 <>
-                                    {[
-                                        { id: "universidad", label: "Universidad", options: UNIVERSIDADES, placeholder: "Selecciona tu universidad" },
-                                        { id: "programa", label: "Programa académico", options: PROGRAMAS, placeholder: "Selecciona tu programa" },
-                                    ].map(({ id, label, options, placeholder }) => (
-                                        <div key={id}>
-                                            <label style={labelStyle}>{label}</label>
-                                            <select id={id} name={id} required onChange={handleChange}
-                                                    value={formData[id as keyof RegisterForm] as string} style={inputStyle}>
-                                                <option value="">{placeholder}</option>
-                                                {options.map((o) => <option key={o} value={o}>{o}</option>)}
-                                            </select>
-                                        </div>
-                                    ))}
-                                    <div>
-                                        <label style={labelStyle}>Semestre actual</label>
-                                        <select id="semestre" name="semestre" required onChange={handleChange} value={formData.semestre} style={inputStyle}>
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-sm font-semibold text-slate-700">Universidad</label>
+                                        <input type="text" value={UNIVERSIDAD_FIJA} readOnly className={`${inputCls} bg-slate-100 text-slate-500 cursor-not-allowed`} />
+                                    </div>
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-sm font-semibold text-slate-700">Programa académico</label>
+                                        <input type="text" value={PROGRAMA_FIJO} readOnly className={`${inputCls} bg-slate-100 text-slate-500 cursor-not-allowed`} />
+                                    </div>
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-sm font-semibold text-slate-700">Semestre actual</label>
+                                        <select id="semestre" name="semestre" required value={formData.semestre} onChange={handleChange} className={`${inputCls} bg-white`}>
                                             <option value="">Selecciona tu semestre</option>
-                                            {[1,2,3,4,5,6,7,8,9,10].map((s) => <option key={s} value={s}>{s}° semestre</option>)}
+                                            {SEMESTRES.map((s) => <option key={s} value={s}>{s}° semestre</option>)}
                                         </select>
+                                        <p className="text-xs text-slate-400">La práctica profesional inicia en 4° semestre.</p>
                                     </div>
                                 </>
                             ) : (
                                 <>
-                                    <div>
-                                        <label style={labelStyle}>Razón social</label>
-                                        <input id="razonSocial" name="razonSocial" type="text" required placeholder="Empresa S.A.S."
-                                               value={formData.razonSocial} onChange={handleChange} style={inputStyle} />
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-sm font-semibold text-slate-700">Razón social</label>
+                                        <input id="razonSocial" name="razonSocial" type="text" required placeholder="Empresa S.A.S." value={formData.razonSocial} onChange={handleChange} className={inputCls} />
                                     </div>
-                                    <div>
-                                        <label style={labelStyle}>NIT</label>
-                                        <input id="nit" name="nit" type="text" required placeholder="900.123.456-7"
-                                               value={formData.nit} onChange={handleChange} style={inputStyle} />
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-sm font-semibold text-slate-700">NIT</label>
+                                        <input id="nit" name="nit" type="text" required placeholder="900.123.456-7" value={formData.nit} onChange={handleChange} className={inputCls} />
                                     </div>
                                 </>
                             )}
 
-                            {error && (
-                                <div style={{ backgroundColor: "#ffdad6", border: "1px solid rgba(186,26,26,0.3)", borderRadius: "8px", padding: "12px 16px" }}>
-                                    <p style={{ color: "#93000a", fontSize: "14px", margin: 0 }}>{error}</p>
-                                </div>
-                            )}
+                            {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>}
 
-                            <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
-                                <input type="checkbox" id="terminos" required style={{ marginTop: "2px", width: "16px", height: "16px" }} />
-                                <label htmlFor="terminos" style={{ fontSize: "12px", color: "#44474d", lineHeight: "1.6" }}>
-                                    Acepto los <Link href="/terminos" style={{ textDecoration: "underline", color: "#1b1b1d" }}>Términos de uso</Link>{" "}
-                                    y la <Link href="/privacidad" style={{ textDecoration: "underline", color: "#1b1b1d" }}>Política de privacidad</Link>,
-                                    conforme a la Ley 1581 de 2012 (Habeas Data).
-                                </label>
-                            </div>
+                            <label className="flex items-start gap-2.5 text-xs text-slate-500 leading-relaxed">
+                                <input type="checkbox" required className="mt-0.5 w-4 h-4 accent-slate-900" />
+                                <span>Acepto los <Link href="/terminos" className="underline text-slate-700">Términos de uso</Link> y la <Link href="/privacidad" className="underline text-slate-700">Política de privacidad</Link>, conforme a la Ley 1581 de 2012 (Habeas Data).</span>
+                            </label>
 
-                            <div style={{ display: "flex", gap: "12px" }}>
-                                <button type="button" onClick={() => setStep(2)}
-                                        style={{ flex: 1, padding: "12px 16px", backgroundColor: "white", color: "#1b1b1d", fontWeight: "600", fontSize: "14px", borderRadius: "8px", border: "1px solid #c5c6cd", cursor: "pointer" }}>
-                                    Atrás
-                                </button>
+                            <div className="flex gap-3">
+                                <button type="button" onClick={() => setStep(2)} className="flex-1 py-3 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50">Atrás</button>
                                 <button type="submit" disabled={loading}
-                                        style={{ flex: 1, padding: "12px 16px", backgroundColor: "#f97316", color: "white", fontWeight: "600", fontSize: "14px", borderRadius: "8px", border: "none", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 }}>
+                                        className="flex-1 py-3 rounded-xl text-white font-semibold text-sm hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
+                                        style={{ backgroundColor: ORANGE }}>
                                     {loading ? "Registrando..." : "Crear cuenta"}
                                 </button>
                             </div>

@@ -4,6 +4,7 @@ const { specs, swaggerUi } = require("./swagger");
 const perfilesRoutes      = require("./routes/perfiles.routes");
 const postulacionesRoutes = require("./routes/postulaciones.routes");
 const notificacionesRoutes = require("./routes/notificaciones.routes");
+const entrevistasRoutes   = require("./routes/entrevistas.routes");
 
 const app = express();
 
@@ -15,6 +16,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
 app.use("/perfiles",        perfilesRoutes);
 app.use("/postulaciones",   postulacionesRoutes);
 app.use("/notificaciones",  notificacionesRoutes);
+app.use("/entrevistas",     entrevistasRoutes);
 
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "ms-perfiles" }));
 

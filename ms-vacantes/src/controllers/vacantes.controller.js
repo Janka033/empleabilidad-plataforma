@@ -1,7 +1,19 @@
 const VacanteModel = require("../models/vacante.model");
+const ES = require("../es");
+
+const AUDIT_URL = process.env.AUDIT_SERVICE_URL || "http://ms-audit:3007";
 
 const asyncHandler = (fn) => (req, res, next) =>
     Promise.resolve(fn(req, res, next)).catch(next);
+
+// Registra un evento de auditoría (best-effort) — RF19
+function auditar(authHeader, evento) {
+    fetch(`${AUDIT_URL}/audit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: authHeader },
+        body: JSON.stringify(evento),
+    }).catch(() => {});
+}
 
 /**
  * @swagger
@@ -101,6 +113,16 @@ const create = asyncHandler(async (req, res) => {
         titulo, empresa, descripcion, requisitos, modalidad, tipo, ciudad, area, salario,
     });
 
+    ES.indexVacante(vacante); // buscador (RF06)
+
+    auditar(req.headers["authorization"], {
+        servicio: "vacantes",
+        accion: "crear_vacante",
+        entidad: "vacante",
+        entidadId: vacante.id,
+        detalle: `Vacante publicada: "${vacante.titulo}" (${empresa})`,
+    });
+
     return res.status(201).json(vacante);
 });
 
@@ -129,7 +151,62 @@ const update = asyncHandler(async (req, res) => {
     const updated = await VacanteModel.update(req.params.id, {
         titulo, empresa, descripcion, requisitos, modalidad, tipo, ciudad, area, salario,
     });
+    if (updated) ES.indexVacante(updated); // reindexar (RF06)
     return res.json(updated);
 });
 
-module.exports = { list, getById, create, update };
+// GET /vacantes/mias — vacantes de la empresa autenticada (incluye inactivas)
+const misVacantes = asyncHandler(async (req, res) => {
+    const vacantes = await VacanteModel.findByEmpresaId(req.user.id);
+    return res.json({ vacantes, total: vacantes.length });
+});
+
+// GET /vacantes/buscar — buscador avanzado con ElasticSearch (RF06).
+// Tolerante a errores tipográficos y con ranking por relevancia.
+// Si ElasticSearch no está disponible, cae a la búsqueda por PostgreSQL.
+const buscar = asyncHandler(async (req, res) => {
+    const { q, modalidad, tipo, area } = req.query;
+    const salarioMin = req.query.salarioMin ? parseInt(req.query.salarioMin) : undefined;
+    const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+    const offset = req.query.offset ? parseInt(req.query.offset) : 0;
+
+    try {
+        const { ids, total } = await ES.buscar({ q, modalidad, tipo, area, salarioMin, limit, offset });
+        const vacantes = await VacanteModel.findByIds(ids);
+        return res.json({ vacantes, total, motor: "elasticsearch" });
+    } catch (e) {
+        // Fallback resiliente a PostgreSQL
+        console.error("[ms-vacantes] Búsqueda ES falló, usando PostgreSQL:", e.message);
+        const result = await VacanteModel.findAll({
+            titulo: q, modalidad, tipo, area, salarioMin, limit, offset,
+        });
+        return res.json({ ...result, motor: "postgres" });
+    }
+});
+
+// PATCH /vacantes/:id/activa — activar o desactivar (solo la empresa dueña).
+// Al desactivar, deja de mostrarse a los estudiantes (la lista pública filtra activa=true).
+const cambiarActiva = asyncHandler(async (req, res) => {
+    const existente = await VacanteModel.findById(req.params.id);
+    if (!existente) return res.status(404).json({ message: "Vacante no encontrada" });
+    if (existente.empresa_id !== req.user.id) {
+        return res.status(403).json({ message: "No autorizado para esta vacante" });
+    }
+
+    const activa = !!req.body.activa;
+    const updated = await VacanteModel.setActiva(req.params.id, activa);
+
+    if (updated) ES.indexVacante(updated); // reflejar el cambio en el buscador (RF06)
+
+    auditar(req.headers["authorization"], {
+        servicio: "vacantes",
+        accion: activa ? "activar_vacante" : "desactivar_vacante",
+        entidad: "vacante",
+        entidadId: existente.id,
+        detalle: `Vacante "${existente.titulo}" ${activa ? "activada" : "desactivada"}`,
+    });
+
+    return res.json(updated);
+});
+
+module.exports = { list, getById, create, update, misVacantes, cambiarActiva, buscar };

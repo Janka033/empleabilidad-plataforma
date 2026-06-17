@@ -3,6 +3,10 @@ export const API_URLS = {
   auth:     process.env.NEXT_PUBLIC_AUTH_URL     || "http://localhost:3001",
   perfiles: process.env.NEXT_PUBLIC_PERFILES_URL || "http://localhost:3002",
   vacantes: process.env.NEXT_PUBLIC_VACANTES_URL || "http://localhost:3003",
+  matching: process.env.NEXT_PUBLIC_MATCHING_URL || "http://localhost:3004",
+  practicas: process.env.NEXT_PUBLIC_PRACTICAS_URL || "http://localhost:3005",
+  analytics: process.env.NEXT_PUBLIC_ANALYTICS_URL || "http://localhost:3006",
+  audit:     process.env.NEXT_PUBLIC_AUDIT_URL     || "http://localhost:3007",
 } as const;
 
 // ── Headers con JWT ───────────────────────────────────────────────────────────

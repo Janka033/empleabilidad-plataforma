@@ -1,4 +1,5 @@
 const NotificacionModel = require("../models/notificacion.model");
+const { notificarUsuario } = require("../services/notificador.service");
 
 const asyncHandler = (fn) => (req, res, next) =>
     Promise.resolve(fn(req, res, next)).catch(next);
@@ -23,4 +24,16 @@ const marcarTodasLeidas = asyncHandler(async (req, res) => {
     return res.json({ ok: true });
 });
 
-module.exports = { getMias, marcarLeida, marcarTodasLeidas };
+// POST /notificaciones — crear notificación para un usuario.
+// Usado por otros microservicios (p.ej. ms-practicas) que reenvían el JWT.
+const crear = asyncHandler(async (req, res) => {
+    const { userId, tipo, titulo, mensaje, meta } = req.body;
+    if (!userId || !tipo || !titulo || !mensaje) {
+        return res.status(400).json({ message: "userId, tipo, titulo y mensaje son obligatorios" });
+    }
+    // Panel + email (RF11)
+    const notif = await notificarUsuario({ userId, tipo, titulo, mensaje, meta, authHeader: req.headers["authorization"] });
+    return res.status(201).json(notif);
+});
+
+module.exports = { getMias, marcarLeida, marcarTodasLeidas, crear };

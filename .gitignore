@@ -2,6 +2,15 @@
 node_modules/
 **/node_modules/
 
+# Python (microservicios FastAPI)
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+
+# Archivos temporales sueltos
+/text
+
 # Next.js
 **/.next/
 **/.next-build/
@@ -17,6 +26,9 @@ node_modules/
 .env.*
 **/.env
 **/.env.*
+# ...pero sí versionamos la plantilla de ejemplo
+!.env.example
+!**/.env.example
 
 # Logs
 *.log

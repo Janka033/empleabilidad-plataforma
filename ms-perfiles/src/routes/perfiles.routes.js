@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { getMe, getById, update, updateMe, create, liberarEstudiante } = require("../controllers/perfiles.controller");
+const { getMe, getById, update, updateMe, create, liberarEstudiante, listarEstudiantes } = require("../controllers/perfiles.controller");
 const { verifyToken } = require("../middlewares/auth.middleware");
 
 const router = Router();
@@ -7,6 +7,7 @@ const router = Router();
 router.use(verifyToken);
 
 router.post("/", create);
+router.get("/estudiantes", listarEstudiantes);
 router.get("/me", getMe);
 router.put("/me", updateMe);
 router.get("/:id", getById);

@@ -5,6 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { API_URLS } from "../../lib/api";
 import { saveSession } from "../../lib/auth";
+import GoogleButton from "../../components/GoogleButton";
+
+const heading = { fontFamily: "'Space Grotesk', 'Inter', sans-serif" } as const;
+const NAVY = "#0d1c32";
+const ORANGE = "#f97316";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -28,20 +33,11 @@ export default function LoginPage() {
                 body: JSON.stringify(formData),
             });
             const data = await res.json();
-            if (!res.ok) {
-                setError(data.message || "Credenciales inválidas");
-                return;
-            }
-
-            // Guarda en localStorage + cookie (para el middleware edge)
+            if (!res.ok) { setError(data.message || "Credenciales inválidas"); return; }
             saveSession(data.token, data.role, data.user);
-
-            // ── Redirección según rol ─────────────────────────────────────
-            if (data.role === "empresa") {
-                router.push("/empresa/dashboard");
-            } else {
-                router.push("/vacantes");
-            }
+            if (data.role === "admin") router.push("/admin/dashboard");
+            else if (data.role === "empresa") router.push("/empresa/dashboard");
+            else router.push("/vacantes");
         } catch {
             setError("Error de conexión. Intenta de nuevo.");
         } finally {
@@ -50,140 +46,85 @@ export default function LoginPage() {
     };
 
     return (
-        <div style={{ display: "flex", minHeight: "100vh" }}>
-            {/* Panel izquierdo — navy */}
-            <div
-                style={{ width: "50%", backgroundColor: "#0d1c32", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "48px", position: "relative", overflow: "hidden" }}
-                className="hidden lg:flex"
-            >
-                <div style={{ position: "absolute", top: 0, right: 0, width: "384px", height: "384px", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: "9999px", transform: "translate(50%, -50%)" }} />
-                <div style={{ position: "absolute", bottom: 0, left: 0, width: "256px", height: "256px", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: "9999px", transform: "translate(-50%, 50%)" }} />
-                <div style={{ position: "absolute", top: "50%", right: "32px", width: "128px", height: "128px", backgroundColor: "rgba(249,115,22,0.1)", borderRadius: "9999px", transform: "translateY(-50%)" }} />
-
-                <div style={{ position: "relative", zIndex: 10 }}>
-                    <span style={{ color: "white", fontSize: "24px", fontWeight: "700", letterSpacing: "-0.025em" }}>
-                        Empleo<span style={{ color: "#f97316" }}>Uni</span>
-                    </span>
-                    <p style={{ color: "#b9c7e4", fontSize: "14px", marginTop: "4px" }}>
-                        Plataforma de empleabilidad universitaria
+        <div className="min-h-screen flex bg-slate-50">
+            {/* Panel de marca */}
+            <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden"
+                 style={{ background: `linear-gradient(160deg, ${NAVY} 0%, #16284a 60%, #1b3a6b 100%)` }}>
+                <div className="absolute top-0 right-0 w-96 h-96 rounded-full opacity-10" style={{ background: ORANGE, transform: "translate(40%,-40%)" }} />
+                <Link href="/" className="relative text-2xl font-bold text-white" style={heading}>
+                    Empleo<span style={{ color: ORANGE }}>Uni</span>
+                </Link>
+                <div className="relative">
+                    <h1 className="text-4xl font-bold text-white leading-tight mb-4" style={heading}>
+                        Bienvenido de nuevo a<br /><span style={{ color: ORANGE }}>tu carrera.</span>
+                    </h1>
+                    <p className="text-slate-300 text-lg max-w-[28rem] leading-relaxed">
+                        Accede a tus vacantes recomendadas, postulaciones, entrevistas y el seguimiento de tu práctica profesional.
                     </p>
-                </div>
-
-                <div style={{ position: "relative", zIndex: 10 }}>
-                    <h2 style={{ color: "white", fontSize: "36px", fontWeight: "700", lineHeight: "1.2", marginBottom: "16px" }}>
-                        Tu carrera<br />profesional<br />
-                        <span style={{ color: "#f97316" }}>comienza aquí.</span>
-                    </h2>
-                    <p style={{ color: "#76849f", fontSize: "16px", lineHeight: "1.6", maxWidth: "384px" }}>
-                        Conectamos estudiantes universitarios colombianos con empresas que buscan talento en formación.
-                    </p>
-                    <div style={{ display: "flex", gap: "32px", marginTop: "40px" }}>
-                        {[["+ 1.200", "Vacantes activas"], ["+340", "Empresas aliadas"], ["+5k", "Estudiantes"]].map(([num, label]) => (
-                            <div key={label}>
-                                <p style={{ color: "white", fontSize: "24px", fontWeight: "700" }}>{num}</p>
-                                <p style={{ color: "#76849f", fontSize: "14px" }}>{label}</p>
+                    <div className="flex gap-8 mt-10">
+                        {[["Matching", "auto_awesome"], ["Prácticas", "workspace_premium"], ["Entrevistas", "event_available"]].map(([l, ic]) => (
+                            <div key={l} className="flex flex-col items-center gap-2 text-slate-300">
+                                <span className="material-symbols-outlined" style={{ color: ORANGE }}>{ic}</span>
+                                <span className="text-xs">{l}</span>
                             </div>
                         ))}
                     </div>
                 </div>
-
-                <p style={{ position: "relative", zIndex: 10, color: "#44474d", fontSize: "12px" }}>
-                    © 2025 EmpleoUni — CUE Armenia, Quindío
-                </p>
+                <p className="relative text-xs text-slate-500">© 2026 EmpleoUni — CUE Alexander von Humboldt</p>
             </div>
 
-            {/* Panel derecho — formulario */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", backgroundColor: "#fbf9fb", padding: "48px 24px" }}>
-                <div className="lg:hidden" style={{ marginBottom: "32px", textAlign: "center" }}>
-                    <span style={{ color: "#0d1c32", fontSize: "24px", fontWeight: "700" }}>
-                        Empleo<span style={{ color: "#f97316" }}>Uni</span>
-                    </span>
-                </div>
-
-                <div style={{ width: "100%", maxWidth: "448px" }}>
-                    <div style={{ marginBottom: "32px" }}>
-                        <h1 style={{ fontSize: "24px", fontWeight: "700", color: "#1b1b1d", letterSpacing: "-0.025em" }}>
-                            Iniciar sesión
-                        </h1>
-                        <p style={{ color: "#44474d", fontSize: "14px", marginTop: "4px" }}>
+            {/* Formulario */}
+            <div className="flex-1 flex flex-col justify-center items-center px-6 py-12">
+                <div className="w-full max-w-[28rem]">
+                    <Link href="/" className="lg:hidden block text-2xl font-bold mb-8 text-center" style={{ ...heading, color: NAVY }}>
+                        Empleo<span style={{ color: ORANGE }}>Uni</span>
+                    </Link>
+                    <div className="mb-8">
+                        <h2 className="text-2xl font-bold text-slate-900" style={heading}>Iniciar sesión</h2>
+                        <p className="text-slate-500 text-sm mt-1">
                             ¿No tienes cuenta?{" "}
-                            <Link
-                                href="/register"
-                                style={{ color: "#0d1c32", fontWeight: "600", textDecoration: "none" }}
-                                onMouseOver={(e) => (e.currentTarget.style.color = "#f97316")}
-                                onMouseOut={(e)  => (e.currentTarget.style.color = "#0d1c32")}
-                            >
-                                Regístrate gratis
-                            </Link>
+                            <Link href="/register" className="font-semibold hover:underline" style={{ color: NAVY }}>Regístrate gratis</Link>
                         </p>
                     </div>
 
-                    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                        <div>
-                            <label htmlFor="email" style={{ display: "block", fontSize: "14px", fontWeight: "600", color: "#1b1b1d", marginBottom: "6px" }}>
-                                Correo electrónico
-                            </label>
-                            <input
-                                id="email" name="email" type="email" autoComplete="email" required
-                                value={formData.email} onChange={handleChange} placeholder="tu@correo.com"
-                                style={{ width: "100%", padding: "12px 16px", backgroundColor: "white", border: "1px solid #c5c6cd", borderRadius: "8px", fontSize: "14px", color: "#1b1b1d", boxSizing: "border-box" }}
-                            />
+                    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+                        <div className="flex flex-col gap-1.5">
+                            <label htmlFor="email" className="text-sm font-semibold text-slate-700">Correo electrónico</label>
+                            <input id="email" name="email" type="email" autoComplete="email" required
+                                   value={formData.email} onChange={handleChange} placeholder="tu@correo.com"
+                                   className="px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-500 transition" />
                         </div>
-
-                        <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                                <label htmlFor="password" style={{ fontSize: "14px", fontWeight: "600", color: "#1b1b1d" }}>
-                                    Contraseña
-                                </label>
-                                <Link href="/forgot-password" style={{ fontSize: "12px", color: "#44474d", textDecoration: "none" }}>
-                                    ¿Olvidaste tu contraseña?
-                                </Link>
+                        <div className="flex flex-col gap-1.5">
+                            <div className="flex justify-between items-center">
+                                <label htmlFor="password" className="text-sm font-semibold text-slate-700">Contraseña</label>
+                                <Link href="/forgot-password" className="text-xs text-slate-500 hover:text-slate-800">¿La olvidaste?</Link>
                             </div>
-                            <input
-                                id="password" name="password" type="password" autoComplete="current-password" required
-                                value={formData.password} onChange={handleChange} placeholder="••••••••"
-                                style={{ width: "100%", padding: "12px 16px", backgroundColor: "white", border: "1px solid #c5c6cd", borderRadius: "8px", fontSize: "14px", color: "#1b1b1d", boxSizing: "border-box" }}
-                            />
+                            <input id="password" name="password" type="password" autoComplete="current-password" required
+                                   value={formData.password} onChange={handleChange} placeholder="••••••••"
+                                   className="px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-500 transition" />
                         </div>
 
                         {error && (
-                            <div style={{ backgroundColor: "#ffdad6", border: "1px solid rgba(186,26,26,0.3)", borderRadius: "8px", padding: "12px 16px" }}>
-                                <p style={{ color: "#93000a", fontSize: "14px", margin: 0 }}>{error}</p>
+                            <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+                                <span className="material-symbols-outlined text-[18px]">error</span>{error}
                             </div>
                         )}
 
-                        <button
-                            type="submit" disabled={loading}
-                            style={{ width: "100%", padding: "12px 16px", backgroundColor: loading ? "#44474d" : "#0d1c32", color: "white", fontWeight: "600", fontSize: "14px", borderRadius: "8px", border: "none", cursor: loading ? "not-allowed" : "pointer" }}
-                        >
-                            {loading ? "Ingresando..." : "Ingresar"}
-                        </button>
-
-                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                            <div style={{ flex: 1, height: "1px", backgroundColor: "#c5c6cd" }} />
-                            <span style={{ fontSize: "12px", color: "#75777e" }}>o continúa con</span>
-                            <div style={{ flex: 1, height: "1px", backgroundColor: "#c5c6cd" }} />
-                        </div>
-
-                        <button
-                            type="button"
-                            style={{ width: "100%", padding: "12px 16px", backgroundColor: "white", color: "#1b1b1d", fontWeight: "500", fontSize: "14px", borderRadius: "8px", border: "1px solid #c5c6cd", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "12px" }}
-                        >
-                            <svg viewBox="0 0 24 24" style={{ width: "16px", height: "16px" }} aria-hidden>
-                                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                            </svg>
-                            Continuar con Google
+                        <button type="submit" disabled={loading}
+                                className="w-full py-3 rounded-xl text-white font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-2 shadow-sm"
+                                style={{ backgroundColor: NAVY }}>
+                            {loading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Ingresando...</> : "Ingresar"}
                         </button>
                     </form>
 
-                    <p style={{ textAlign: "center", fontSize: "12px", color: "#75777e", marginTop: "32px" }}>
+                    <div className="mt-6">
+                        <GoogleButton />
+                    </div>
+
+                    <p className="text-center text-xs text-slate-400 mt-8">
                         Al ingresar, aceptas los{" "}
-                        <Link href="/terminos" style={{ textDecoration: "underline" }}>Términos de uso</Link>{" "}
-                        y la{" "}
-                        <Link href="/privacidad" style={{ textDecoration: "underline" }}>Política de privacidad</Link>
+                        <Link href="/terminos" className="underline hover:text-slate-600">Términos</Link> y la{" "}
+                        <Link href="/privacidad" className="underline hover:text-slate-600">Política de privacidad</Link>.
                     </p>
                 </div>
             </div>
